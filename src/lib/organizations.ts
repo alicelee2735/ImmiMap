@@ -233,6 +233,9 @@ async function linkOrgServices(
   }
 }
 
+/** PostgREST's default max-rows. Unpaged `.select()` silently stops here. */
+const POSTGREST_PAGE_SIZE = 1000;
+
 export async function fetchOrganizations(
   filters: OrganizationFilters = {},
 ): Promise<OrganizationWithServices[]> {
@@ -247,55 +250,50 @@ export async function fetchOrganizations(
       : [filters.state]
     : [];
 
-  let query = supabase
-    .from("organizations")
-    .select(buildOrgSelect(filters.category, true))
-    .order("name");
+  const loadPage = (from: number, includeLinkStatus: boolean) => {
+    let query = supabase
+      .from("organizations")
+      .select(buildOrgSelect(filters.category, includeLinkStatus))
+      .order("name")
+      .order("id")
+      .range(from, from + POSTGREST_PAGE_SIZE - 1);
 
-  if (filters.name) {
-    query = query.ilike("name", `%${filters.name}%`);
-  }
+    if (filters.name) {
+      query = query.ilike("name", `%${filters.name}%`);
+    }
+    if (filters.city) {
+      query = query.ilike("city", `%${filters.city}%`);
+    }
+    if (states.length === 1) {
+      query = query.eq("state", states[0]);
+    } else if (states.length > 1) {
+      query = query.in("state", states);
+    }
+    if (filters.category) {
+      query = query.eq("org_services.services.name", filters.category);
+    }
 
-  if (filters.city) {
-    query = query.ilike("city", `%${filters.city}%`);
-  }
+    return query;
+  };
 
-  if (states.length === 1) {
-    query = query.eq("state", states[0]);
-  } else if (states.length > 1) {
-    query = query.in("state", states);
-  }
+  const loadPages = async (includeLinkStatus: boolean) => {
+    const rows: OrgRow[] = [];
+    for (let from = 0; ; from += POSTGREST_PAGE_SIZE) {
+      const { data, error } = await loadPage(from, includeLinkStatus);
+      if (error) return { rows, error };
+      if (!data || data.length === 0) break;
+      rows.push(...(data as unknown as OrgRow[]));
+      if (data.length < POSTGREST_PAGE_SIZE) break;
+    }
+    return { rows, error: null };
+  };
 
-  if (filters.category) {
-    query = query.eq("org_services.services.name", filters.category);
-  }
-
-  let { data, error } = await query;
+  let { rows, error } = await loadPages(true);
 
   // Pre-migration environments: fall back without link-status columns.
   if (isMissingLinkStatusColumnError(error)) {
-    let fallback = supabase
-      .from("organizations")
-      .select(buildOrgSelect(filters.category, false))
-      .order("name");
-
-    if (filters.name) {
-      fallback = fallback.ilike("name", `%${filters.name}%`);
-    }
-    if (filters.city) {
-      fallback = fallback.ilike("city", `%${filters.city}%`);
-    }
-    if (states.length === 1) {
-      fallback = fallback.eq("state", states[0]);
-    } else if (states.length > 1) {
-      fallback = fallback.in("state", states);
-    }
-    if (filters.category) {
-      fallback = fallback.eq("org_services.services.name", filters.category);
-    }
-
-    const retry = await fallback;
-    data = retry.data;
+    const retry = await loadPages(false);
+    rows = retry.rows;
     error = retry.error;
   }
 
@@ -303,7 +301,7 @@ export async function fetchOrganizations(
     throw error;
   }
 
-  return (data as unknown as OrgRow[])
+  return rows
     .map(mapRow)
     .filter((org): org is OrganizationWithServices => org !== null);
 }

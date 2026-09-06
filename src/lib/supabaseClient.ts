@@ -5,6 +5,17 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 let browserClient: SupabaseClient | null = null;
 
+/**
+ * Next.js patches `fetch` and caches GET by URL. PostgREST pagination lives
+ * in the Range header, so a cached first page would be replayed forever.
+ */
+function uncachedFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  return fetch(input, { ...init, cache: "no-store" });
+}
+
 export function createSupabaseClient(): SupabaseClient {
   if (!url || !anonKey) {
     throw new Error(
@@ -14,6 +25,7 @@ export function createSupabaseClient(): SupabaseClient {
 
   return createClient(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: uncachedFetch },
   });
 }
 
@@ -38,6 +50,7 @@ export function getSupabaseAdminClient(): SupabaseClient {
 
   return createClient(url, adminKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: uncachedFetch },
   });
 }
 

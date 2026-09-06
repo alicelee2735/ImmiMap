@@ -46,6 +46,38 @@ function loadEnvFile(path: string) {
 
 loadEnvFile(join(root, ".env.local"));
 
+/** PostgREST's default max-rows. Unpaged `.select()` silently stops here. */
+const POSTGREST_PAGE_SIZE = 1000;
+
+type KeylessRow = {
+  id: string;
+  name: string;
+  city: string | null;
+  state: string | null;
+  address: string | null;
+  org_type: string | null;
+};
+
+async function fetchKeylessRows(
+  supabase: Awaited<ReturnType<typeof createIngestClient>>,
+): Promise<KeylessRow[]> {
+  const rows: KeylessRow[] = [];
+  for (let from = 0; ; from += POSTGREST_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("organizations")
+      .select("id, name, city, state, address, org_type")
+      .is("legacy_id", null)
+      .order("name")
+      .order("id")
+      .range(from, from + POSTGREST_PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    rows.push(...(data as KeylessRow[]));
+    if (data.length < POSTGREST_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
 async function main() {
   const planPath =
     process.argv[2] ?? join(root, "scripts", "reports", "eoir-sync-plan.json");
@@ -68,14 +100,7 @@ async function main() {
   }
 
   const supabase = await createIngestClient();
-  const { data, error } = await supabase
-    .from("organizations")
-    .select("id, name, city, state, address, org_type")
-    .is("legacy_id", null)
-    .order("name");
-
-  if (error) throw error;
-  const keyless = data ?? [];
+  const keyless = await fetchKeylessRows(supabase);
 
   const candidates: MatchCandidate[] = keyless.map((row) => ({
     id: row.id,
