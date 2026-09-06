@@ -18,9 +18,15 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { MIN_EXPECTED_RECORDS } from "@/lib/ingestion/eoir/constants";
+import {
+  EOIR_KEY_PREFIX,
+  EOIR_PRO_BONO_KEY_PREFIX,
+  MIN_EXPECTED_PRO_BONO_RECORDS,
+  MIN_EXPECTED_RECORDS,
+} from "@/lib/ingestion/eoir/constants";
 import { createIngestClient } from "@/lib/ingestion/eoir/client";
-import { downloadRoster } from "@/lib/ingestion/eoir/fetch-roster";
+import { downloadProBonoList } from "@/lib/ingestion/eoir/fetch-pro-bono";
+import { downloadRoster, type RosterDownload } from "@/lib/ingestion/eoir/fetch-roster";
 import {
   censusGeocoder,
   chainGeocoders,
@@ -28,22 +34,35 @@ import {
 } from "@/lib/ingestion/eoir/geocode";
 import {
   DuplicateMatcher,
+  namesIndicateSameOffice,
   zipFromAddress,
   type MatchCandidate,
 } from "@/lib/ingestion/eoir/match";
 import {
+  addressIdentityKey,
   buildLegacyKeyV1,
   buildNaturalKey,
   toGeocodeRequest,
   toOrganizationRow,
+  toProBonoOrganizationRow,
   type OrganizationUpsert,
 } from "@/lib/ingestion/eoir/normalize";
+import { parseProBono } from "@/lib/ingestion/eoir/parse-pro-bono";
 import { parseRoster } from "@/lib/ingestion/eoir/parse-roster";
-import { extractPdfPages, flattenLines } from "@/lib/ingestion/eoir/pdf-text";
+import {
+  findProximityFlags,
+  universeFromSync,
+} from "@/lib/ingestion/eoir/proximity-triage";
+import {
+  extractPdfPages,
+  flattenLines,
+  type PdfPage,
+} from "@/lib/ingestion/eoir/pdf-text";
 import type {
   AddressLikeNameFlag,
   EoirOfficeRecord,
   GeocodeResult,
+  ParsedRoster,
   PlannedChange,
   SyncSummary,
 } from "@/lib/ingestion/eoir/types";
@@ -68,9 +87,56 @@ export type SyncOptions = {
   includePlan?: boolean;
 };
 
+type EoirSyncAdapter = {
+  label: string;
+  download: () => Promise<RosterDownload>;
+  parse: (pages: PdfPage[]) => ParsedRoster;
+  keyPrefix: string;
+  toRow: (
+    record: EoirOfficeRecord,
+    geocode: GeocodeResult | undefined,
+  ) => OrganizationUpsert;
+  minExpected: number;
+  logSource: string;
+  fallbackWarning: string;
+  zeroRecordsError: string;
+};
+
+const ROSTER_ADAPTER: EoirSyncAdapter = {
+  label: "eoir",
+  download: downloadRoster,
+  parse: (pages) => parseRoster(flattenLines(pages)),
+  keyPrefix: EOIR_KEY_PREFIX,
+  toRow: toOrganizationRow,
+  minExpected: MIN_EXPECTED_RECORDS,
+  logSource: "eoir_organizations",
+  fallbackWarning:
+    "Could not resolve the roster link by label; used the last-known-good URL. The EOIR page layout may have changed.",
+  zeroRecordsError: "Parsed zero records from the roster; aborting.",
+};
+
+const PRO_BONO_ADAPTER: EoirSyncAdapter = {
+  label: "eoir-probono",
+  download: downloadProBonoList,
+  parse: parseProBono,
+  keyPrefix: EOIR_PRO_BONO_KEY_PREFIX,
+  toRow: toProBonoOrganizationRow,
+  minExpected: MIN_EXPECTED_PRO_BONO_RECORDS,
+  logSource: "eoir_pro_bono",
+  fallbackWarning:
+    "Could not resolve the pro bono list link from the landing page; used the last-known-good URL.",
+  zeroRecordsError: "Parsed zero records from the pro bono list; aborting.",
+};
+
 export type ExistingRow = {
   id: string;
   legacy_id: string | null;
+  /**
+   * Extra ingest keys from `organization_source_keys` — a second EOIR list
+   * (or later source) for the same office. Indexed for exact-key lookup so
+   * that list updates this row instead of inserting another one.
+   */
+  sourceKeys?: string[];
   name: string;
   city: string | null;
   state: string | null;
@@ -157,6 +223,19 @@ export function buildUpdatePayload(
     payload.languages_confirmed = false;
   }
 
+  // A row that already has a primary key under another scheme (roster
+  // doj-ra-* plus a pro bono alias, for example) must keep that primary.
+  // The incoming natural key is how we found the row; it lives on
+  // organization_source_keys, not on organizations.legacy_id.
+  if (
+    previous?.legacy_id &&
+    previous.legacy_id !== row.legacy_id &&
+    (previous.sourceKeys ?? []).includes(row.legacy_id)
+  ) {
+    payload.legacy_id = previous.legacy_id;
+    preserved.push("legacy_id");
+  }
+
   return { payload, preserved };
 }
 
@@ -195,6 +274,45 @@ function flagAddressLikeNames(
   return flags;
 }
 
+/**
+ * Same-street / very-close pairs the matcher does not hold. Report only.
+ * A failure here must not fail the sync.
+ */
+async function runProximityTriage(args: {
+  summary: SyncSummary;
+  warnings: string[];
+  existing: ExistingRow[];
+  inserts: OrganizationUpsert[];
+  updates: Array<{ id: string; row: OrganizationUpdate }>;
+  refetch?: () => Promise<ExistingRow[]>;
+}): Promise<void> {
+  try {
+    const rows = args.refetch
+      ? universeFromSync({
+          existing: await args.refetch(),
+          inserts: [],
+          updates: [],
+        })
+      : universeFromSync({
+          existing: args.existing,
+          inserts: args.inserts,
+          updates: args.updates,
+        });
+    args.summary.proximityFlags = findProximityFlags(rows);
+    if (args.summary.proximityFlags.length > 0) {
+      args.warnings.push(
+        `${args.summary.proximityFlags.length} same-street or ≤100 m pair(s) share a name token the matcher did not hold — review; not merged.`,
+      );
+    }
+  } catch (error) {
+    args.warnings.push(
+      `proximity triage failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
 function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -224,6 +342,28 @@ async function fetchExistingRows(
     if (data.length < pageSize) break;
   }
 
+  const keysByOrg = new Map<string, string[]>();
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("organization_source_keys")
+      .select("organization_id, legacy_id")
+      .order("legacy_id")
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const key of data as Array<{ organization_id: string; legacy_id: string }>) {
+      const list = keysByOrg.get(key.organization_id) ?? [];
+      list.push(key.legacy_id);
+      keysByOrg.set(key.organization_id, list);
+    }
+    if (data.length < pageSize) break;
+  }
+
+  for (const row of rows) {
+    const extra = keysByOrg.get(row.id);
+    if (extra && extra.length > 0) row.sourceKeys = extra;
+  }
+
   return rows;
 }
 
@@ -235,11 +375,15 @@ async function fetchExistingRows(
 export function planChanges(
   records: EoirOfficeRecord[],
   existing: ExistingRow[],
+  keyPrefix: string = EOIR_KEY_PREFIX,
 ): { changes: PlannedChange[]; duplicates: PlannedChange[] } {
   const byKey = new Map<string, ExistingRow>();
 
   for (const row of existing) {
     if (row.legacy_id) byKey.set(row.legacy_id, row);
+    for (const extra of row.sourceKeys ?? []) {
+      byKey.set(extra, row);
+    }
   }
 
   // Every existing row is a fuzzy-match candidate, regardless of whether it
@@ -251,13 +395,16 @@ export function planChanges(
   // scripts/audit-duplicate-organizations.ts). Exact-key lookups below still
   // short-circuit same-scheme matches before any fuzzy comparison runs, so a
   // row already reconciled under its own scheme is never double-flagged
-  // against itself.
+  // against itself. Extra keys on `organization_source_keys` are indexed
+  // here too, so a second EOIR list (pro bono) can find a row whose primary
+  // key belongs to the first list (roster).
   const candidates: MatchCandidate[] = existing.map((row) => ({
     id: row.id,
     name: row.name,
     city: row.city,
     state: row.state,
     zip: zipFromAddress(row.address),
+    legacyId: row.legacy_id,
   }));
 
   // Rarity weights come from the roster itself, so "immigration" is discounted
@@ -271,17 +418,19 @@ export function planChanges(
   const duplicates: PlannedChange[] = [];
   // A v1 key can describe several offices; only the first may claim the row.
   const claimedV1 = new Set<string>();
+  const pendingInserts: EoirOfficeRecord[] = [];
+
+  const baseOf = (record: EoirOfficeRecord) => ({
+    naturalKey: buildNaturalKey(record, keyPrefix),
+    name: record.name,
+    city: record.city,
+    state: record.state,
+  });
 
   for (const record of records) {
-    const naturalKey = buildNaturalKey(record);
-    const v1Key = buildLegacyKeyV1(record);
-
-    const base = {
-      naturalKey,
-      name: record.name,
-      city: record.city,
-      state: record.state,
-    };
+    const naturalKey = buildNaturalKey(record, keyPrefix);
+    const v1Key = buildLegacyKeyV1(record, keyPrefix);
+    const base = baseOf(record);
 
     const exact = byKey.get(naturalKey);
     if (exact) {
@@ -323,17 +472,86 @@ export function planChanges(
           action: "duplicate",
           existingId: match.candidate.id,
           conflictsWith: match.candidate.name,
+          conflictsWithLegacyId: match.candidate.legacyId ?? null,
           matchScore: Number(match.score.toFixed(3)),
           matchedOn: match.matchedOn,
+          matchVia: match.via,
         });
       }
       continue;
     }
 
-    changes.push({ ...base, action: "insert" });
+    pendingInserts.push(record);
+  }
+
+  // Same-batch gate. The matcher above only sees already-stored rows, so two
+  // parsed fragments of one office (different name slugs, same street) would
+  // both insert. Collapse those here, keeping the more complete name.
+  const collapsed: EoirOfficeRecord[] = [];
+  for (const record of pendingInserts) {
+    const sibling = collapsed.find(
+      (kept) =>
+        addressIdentityKey(kept) === addressIdentityKey(record) &&
+        namesIndicateSameOffice(kept.name, record.name),
+    );
+    if (!sibling) {
+      collapsed.push(record);
+      continue;
+    }
+
+    const winner =
+      record.name.length > sibling.name.length ? record : sibling;
+    const loser = winner === record ? sibling : record;
+    mergeOfficeMetadata(winner, loser);
+    if (winner === record) {
+      collapsed[collapsed.indexOf(sibling)] = record;
+    }
+    pushBatchDuplicate(changes, duplicates, loser, winner, keyPrefix);
+  }
+
+  for (const record of collapsed) {
+    changes.push({ ...baseOf(record), action: "insert" });
   }
 
   return { changes, duplicates };
+}
+
+function mergeOfficeMetadata(
+  into: EoirOfficeRecord,
+  from: EoirOfficeRecord,
+): void {
+  const courts = new Set([...(into.courts ?? []), ...(from.courts ?? [])]);
+  into.courts = [...courts];
+  if ((from.website?.length ?? 0) > (into.website?.length ?? 0)) {
+    into.website = from.website;
+  }
+  if (!into.phone && from.phone) into.phone = from.phone;
+}
+
+function pushBatchDuplicate(
+  changes: PlannedChange[],
+  duplicates: PlannedChange[],
+  loser: EoirOfficeRecord,
+  winner: EoirOfficeRecord,
+  keyPrefix: string,
+): void {
+  const base = {
+    naturalKey: buildNaturalKey(loser, keyPrefix),
+    name: loser.name,
+    city: loser.city,
+    state: loser.state,
+  };
+  const winnerKey = buildNaturalKey(winner, keyPrefix);
+  changes.push({ ...base, action: "skip" });
+  duplicates.push({
+    ...base,
+    action: "duplicate",
+    existingId: winnerKey,
+    conflictsWith: winner.name,
+    conflictsWithLegacyId: winnerKey,
+    matchScore: 1,
+    matchedOn: ["same-address"],
+  });
 }
 
 /**
@@ -343,6 +561,7 @@ export function planChanges(
 async function logRun(
   supabase: SupabaseClient,
   summary: SyncSummary,
+  source: string = "eoir_organizations",
 ): Promise<void> {
   const status = summary.ok ? "success" : "failed";
   const errorMessage =
@@ -354,6 +573,7 @@ async function logRun(
   const details = {
     ...summary,
     plan: undefined,
+    insertPreview: undefined,
     duplicateCandidates: undefined,
     geocodeFailures: undefined,
     addressLikeNames: undefined,
@@ -363,12 +583,15 @@ async function logRun(
     addressLikeNameCount: summary.addressLikeNames.length,
     addressLikeNameSample: summary.addressLikeNames.slice(0, 50),
     parseAbandonmentCount: summary.parseAbandonments.length,
+    proximityFlags: undefined,
+    proximityFlagCount: summary.proximityFlags.length,
+    proximityFlagSample: summary.proximityFlags.slice(0, 25),
   };
 
   const { error } = await supabase.from("data_ingestion_log").insert({
     status,
     error_message: errorMessage,
-    source: "eoir_organizations",
+    source,
     details,
   });
 
@@ -388,6 +611,19 @@ async function logRun(
 export async function syncEoirOrganizations(
   options: SyncOptions = {},
 ): Promise<SyncSummary> {
+  return runEoirSync(ROSTER_ADAPTER, options);
+}
+
+export async function syncEoirProBonoOrganizations(
+  options: SyncOptions = {},
+): Promise<SyncSummary> {
+  return runEoirSync(PRO_BONO_ADAPTER, options);
+}
+
+async function runEoirSync(
+  adapter: EoirSyncAdapter,
+  options: SyncOptions = {},
+): Promise<SyncSummary> {
   const {
     apply = false,
     limit,
@@ -402,7 +638,7 @@ export async function syncEoirOrganizations(
   const errors: string[] = [];
 
   const log = (message: string) => {
-    if (verbose) console.log(`[eoir] ${message}`);
+    if (verbose) console.log(`[${adapter.label}] ${message}`);
   };
 
   const summary: SyncSummary = {
@@ -426,6 +662,7 @@ export async function syncEoirOrganizations(
     geocodeFailures: [],
     parseAbandonments: [],
     addressLikeNames: [],
+    proximityFlags: [],
     warnings,
     errors,
     durationMs: 0,
@@ -434,23 +671,24 @@ export async function syncEoirOrganizations(
   const supabase = await createIngestClient();
 
   try {
-    log("resolving and downloading roster PDF…");
-    const download = await downloadRoster();
+    log("resolving and downloading source PDF…");
+    const download = await adapter.download();
     summary.sourceUrl = download.sourceUrl;
     if (download.usedFallbackUrl) {
-      warnings.push(
-        "Could not resolve the roster link by label; used the last-known-good URL. The EOIR page layout may have changed.",
-      );
+      warnings.push(adapter.fallbackWarning);
     }
 
     log(`extracting text (${(download.data.length / 1024).toFixed(0)} KB)…`);
     const pages = await extractPdfPages(download.data);
-    const parsed = parseRoster(flattenLines(pages));
+    const parsed = adapter.parse(pages);
 
     summary.parser = parsed.diagnostics.parser;
     summary.reportUpdatedAt = parsed.diagnostics.reportUpdatedAt;
     summary.rowsParsed = parsed.records.length;
     summary.parseAbandonments = parsed.diagnostics.abandoned;
+    if (typeof parsed.diagnostics.appearances === "number") {
+      summary.listingsParsed = parsed.diagnostics.appearances;
+    }
 
     if (parsed.diagnostics.parser === "fallback") {
       warnings.push(
@@ -462,17 +700,25 @@ export async function syncEoirOrganizations(
         `${parsed.diagnostics.abandonedBlocks} record block(s) ended without an address and were skipped — see parseAbandonments.`,
       );
     }
+    if (
+      typeof parsed.diagnostics.appearances === "number" &&
+      parsed.diagnostics.appearances > parsed.records.length
+    ) {
+      warnings.push(
+        `${parsed.diagnostics.appearances} court-listings collapsed into ${parsed.records.length} unique offices.`,
+      );
+    }
 
     if (parsed.records.length === 0) {
-      errors.push("Parsed zero records from the roster; aborting.");
+      errors.push(adapter.zeroRecordsError);
       summary.durationMs = Date.now() - startedAt;
-      await logRun(supabase, summary);
+      await logRun(supabase, summary, adapter.logSource);
       return summary;
     }
 
-    if (parsed.records.length < MIN_EXPECTED_RECORDS) {
+    if (parsed.records.length < adapter.minExpected) {
       warnings.push(
-        `Parsed only ${parsed.records.length} records (expected at least ${MIN_EXPECTED_RECORDS}); treating this run as suspect.`,
+        `Parsed only ${parsed.records.length} records (expected at least ${adapter.minExpected}); treating this run as suspect.`,
       );
     }
 
@@ -483,7 +729,11 @@ export async function syncEoirOrganizations(
     log(`parsed ${parsed.records.length} records via ${summary.parser} parser`);
 
     const existing = await fetchExistingRows(supabase);
-    const { changes, duplicates } = planChanges(records, existing);
+    const { changes, duplicates } = planChanges(
+      records,
+      existing,
+      adapter.keyPrefix,
+    );
     summary.duplicatesFlagged = duplicates.length;
     summary.duplicateCandidates = duplicates;
     summary.skipped = changes.filter((c) => c.action === "skip").length;
@@ -498,9 +748,12 @@ export async function syncEoirOrganizations(
 
     if (summary.skipped > 0) {
       warnings.push(
-        `${summary.skipped} roster record(s) withheld from insertion — they matched ${duplicates.length} existing row(s) above the duplicate-detection threshold. They will keep being skipped on every future run until a human resolves the match (e.g. backfilling legacy_id onto the existing row); see duplicateCandidates.`,
+        `${summary.skipped} record(s) withheld from insertion — they matched ${duplicates.length} existing row(s) above the duplicate-detection threshold. They will keep being skipped on every future run until a human resolves the match (e.g. backfilling legacy_id onto the existing row); see duplicateCandidates.`,
       );
     }
+
+    const keyOf = (record: EoirOfficeRecord) =>
+      buildNaturalKey(record, adapter.keyPrefix);
 
     const byKeyAction = new Map(changes.map((c) => [c.naturalKey, c]));
     const existingById = new Map(existing.map((row) => [row.id, row]));
@@ -508,7 +761,7 @@ export async function syncEoirOrganizations(
     // Geocode everything being inserted, plus existing rows when refreshing
     // the ZIP-centroid coordinates they were seeded with.
     const geocodeTargets = records.filter((record) => {
-      const change = byKeyAction.get(buildNaturalKey(record));
+      const change = byKeyAction.get(keyOf(record));
       if (!change) return false;
       // Never geocode a record that will not be written.
       if (change.action === "skip") return false;
@@ -535,12 +788,14 @@ export async function syncEoirOrganizations(
       );
 
       geocodes = await geocoder.geocode(
-        geocodeTargets.map(toGeocodeRequest),
+        geocodeTargets.map((record) =>
+          toGeocodeRequest(record, adapter.keyPrefix),
+        ),
         (done, total) => log(`  …geocoded ${done}/${total}`),
       );
 
       const targetsByKey = new Map(
-        geocodeTargets.map((record) => [buildNaturalKey(record), record]),
+        geocodeTargets.map((record) => [keyOf(record), record]),
       );
 
       for (const [key, result] of geocodes) {
@@ -571,7 +826,7 @@ export async function syncEoirOrganizations(
     const updates: Array<{ id: string; row: OrganizationUpdate }> = [];
 
     for (const record of records) {
-      const key = buildNaturalKey(record);
+      const key = keyOf(record);
       const change = byKeyAction.get(key);
       if (!change) continue;
       // Blocked pending human resolution — never write, never geocode.
@@ -580,7 +835,7 @@ export async function syncEoirOrganizations(
       const geocode = geocodes.get(key);
       // Attach the outcome so reports can show which addresses failed and why.
       if (geocode) change.geocode = geocode;
-      const row = toOrganizationRow(record, geocode);
+      const row = adapter.toRow(record, geocode);
 
       if (change.action === "insert") {
         inserts.push(row);
@@ -612,6 +867,26 @@ export async function syncEoirOrganizations(
     const isRekey = (row: OrganizationUpdate) =>
       byKeyAction.get(row.legacy_id)?.action === "rekey";
 
+    summary.insertPreview = inserts.slice(0, 5).map((row) => ({
+      legacy_id: row.legacy_id,
+      name: row.name,
+      description: row.description,
+      address: row.address,
+      city: row.city,
+      state: row.state,
+      lat: row.lat,
+      lng: row.lng,
+      org_type: row.org_type,
+      pricing: row.pricing,
+      intake_status: row.intake_status,
+      languages: row.languages,
+      languages_confirmed: row.languages_confirmed,
+      verified: false,
+      ...(row.website_url ? { website_url: row.website_url } : {}),
+      ...(row.catchment_note ? { catchment_note: row.catchment_note } : {}),
+      ...(row.address_role ? { address_role: row.address_role } : {}),
+    }));
+
     if (!apply) {
       // Dry run reports the plan, so these are intended counts.
       summary.inserted = inserts.length;
@@ -619,6 +894,13 @@ export async function syncEoirOrganizations(
       summary.updated = updates.length - summary.rekeyed;
 
       log("dry run — no writes performed");
+      await runProximityTriage({
+        summary,
+        warnings,
+        existing,
+        inserts,
+        updates,
+      });
       summary.ok = true;
       summary.durationMs = Date.now() - startedAt;
       return summary;
@@ -659,11 +941,20 @@ export async function syncEoirOrganizations(
     }
     log(`inserted ${summary.inserted} rows`);
 
-    // The roster has no practice-area field. Do not invent service tags.
+    await runProximityTriage({
+      summary,
+      warnings,
+      existing,
+      inserts,
+      updates,
+      refetch: () => fetchExistingRows(supabase),
+    });
+
+    // Neither EOIR source publishes practice areas. Do not invent service tags.
 
     summary.ok = errors.length === 0;
     summary.durationMs = Date.now() - startedAt;
-    await logRun(supabase, summary);
+    await logRun(supabase, summary, adapter.logSource);
     return summary;
   } catch (error) {
     errors.push(
@@ -673,7 +964,7 @@ export async function syncEoirOrganizations(
     summary.durationMs = Date.now() - startedAt;
 
     try {
-      await logRun(supabase, summary);
+      await logRun(supabase, summary, adapter.logSource);
     } catch {
       // Logging must not mask the original failure.
     }

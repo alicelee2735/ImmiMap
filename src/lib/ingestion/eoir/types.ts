@@ -1,5 +1,8 @@
 import type { USState } from "@/types/immimap";
 
+/** Marker printed next to a name on the EOIR pro bono list. */
+export type EoirProviderKind = "nonprofit" | "referral" | "private_attorney";
+
 /** One recognized-organization office as published in the roster. */
 export type EoirOfficeRecord = {
   /** Organization name as printed. */
@@ -20,6 +23,15 @@ export type EoirOfficeRecord = {
   pendingRenewal: boolean;
   /** 1-based PDF page, kept for troubleshooting bad parses. */
   sourcePage: number;
+  /**
+   * Pro bono list only. Immigration courts / hearing locations this office
+   * was printed under. Roster records leave this unset.
+   */
+  courts?: string[];
+  /** Pro bono list only. First usable website printed on the listing. */
+  website?: string | null;
+  /** Pro bono list only. Derived from the *, **, *** marker on the name. */
+  providerKind?: EoirProviderKind | null;
 };
 
 /**
@@ -50,6 +62,11 @@ export type ParseDiagnostics = {
   parser: "primary" | "fallback";
   /** Report date printed on the roster cover page, if found. */
   reportUpdatedAt: string | null;
+  /**
+   * Pro bono list only. Court-listing appearances before same-office
+   * rows were collapsed. Unset for the R&A roster.
+   */
+  appearances?: number;
 };
 
 export type ParsedRoster = {
@@ -108,6 +125,32 @@ export type AddressLikeNameFlag = {
   reasons: string[];
 };
 
+/** One side of a post-sync same-street / very-close pair. */
+export type ProximityFlagSide = {
+  id: string;
+  name: string;
+  city: string | null;
+  state: string | null;
+  address: string | null;
+  legacyId: string | null;
+  /** True when this side is a dry-run insert that is not in the table yet. */
+  pending?: boolean;
+};
+
+/**
+ * Two catalog (or planned-insert) rows that share a brand token and sit on
+ * the same normalized street or within 100 m on the same road. Report only —
+ * the sync does not merge them.
+ */
+export type ProximityFlag = {
+  a: ProximityFlagSide;
+  b: ProximityFlagSide;
+  reason: "same_street" | "close";
+  sharedTokens: string[];
+  /** Haversine meters when both sides have coordinates; otherwise null. */
+  meters: number | null;
+};
+
 export type PlannedChange = {
   action: PlannedAction;
   naturalKey: string;
@@ -120,10 +163,14 @@ export type PlannedChange = {
   previousKey?: string;
   /** Name of the existing row a duplicate candidate collided with. */
   conflictsWith?: string;
+  /** legacy_id of that existing row, when it has one (roster vs curated). */
+  conflictsWithLegacyId?: string | null;
   /** Name-similarity score behind a duplicate flag, in [0, 1]. */
   matchScore?: number;
   /** Tokens the duplicate flag rests on, so a reviewer can judge it. */
   matchedOn?: string[];
+  /** How the duplicate flag was accepted. Same-batch address collapses omit this. */
+  matchVia?: "overlap" | "acronym";
   geocode?: GeocodeResult;
 };
 
@@ -174,8 +221,39 @@ export type SyncSummary = {
    * Flagged for review; the sync still writes the row.
    */
   addressLikeNames: AddressLikeNameFlag[];
+  /**
+   * Same-street or ≤100 m pairs that share a brand token, regardless of
+   * the fuzzy matcher's score. Catches short-acronym names the matcher
+   * cannot hold. Report only — never merged automatically.
+   */
+  proximityFlags: ProximityFlag[];
   /** Full per-record plan. Only populated when explicitly requested. */
   plan?: PlannedChange[];
+  /**
+   * Pro bono list only. Court-listing appearances before same-office
+   * consolidation. Unset on the R&A roster sync.
+   */
+  listingsParsed?: number;
+  /** First few insert payloads, for report-only review. */
+  insertPreview?: Array<{
+    legacy_id: string;
+    name: string;
+    description: string;
+    address: string;
+    city: string;
+    state: string;
+    lat: number | null;
+    lng: number | null;
+    org_type: string;
+    pricing: string;
+    intake_status: string;
+    languages: string[];
+    languages_confirmed: boolean;
+    verified: false;
+    website_url?: string;
+    catchment_note?: string;
+    address_role?: "physical" | "mailing";
+  }>;
   /** Non-fatal problems; a populated list still returns ok when rows landed. */
   warnings: string[];
   errors: string[];

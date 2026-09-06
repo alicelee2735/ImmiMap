@@ -6,6 +6,7 @@ import {
   buildNaturalKey,
   formatAddress,
   normalizeStreet,
+  streetFromStoredAddress,
 } from "./normalize";
 import type { EoirOfficeRecord } from "./types";
 
@@ -83,4 +84,37 @@ test("street normalization still distinguishes different addresses", () => {
     normalizeStreet("1130 University Blvd"),
     normalizeStreet("1711 4th Avenue"),
   );
+});
+
+test("street is recovered from a stored locality-bearing address", () => {
+  assert.equal(
+    streetFromStoredAddress(
+      "131 Interpark Blvd, San Antonio, TX 78216",
+      "San Antonio",
+    ),
+    "131 Interpark Blvd",
+  );
+  assert.equal(
+    normalizeStreet(
+      streetFromStoredAddress(
+        "131 Interpark Blvd., San Antonio, TX 78216",
+        "San Antonio",
+      ),
+    ),
+    normalizeStreet(
+      streetFromStoredAddress(
+        "131 Interpark Boulevard, San Antonio, TX 78216",
+        "San Antonio",
+      ),
+    ),
+  );
+});
+
+test("pro bono keys share the roster shape under a distinct prefix", () => {
+  const value = record();
+  const roster = buildNaturalKey(value);
+  const proBono = buildNaturalKey(value, "doj-probono");
+  assert.ok(roster.startsWith("doj-ra-"));
+  assert.ok(proBono.startsWith("doj-probono-"));
+  assert.equal(proBono.slice("doj-probono-".length), roster.slice("doj-ra-".length));
 });

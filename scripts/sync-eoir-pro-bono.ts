@@ -1,17 +1,18 @@
 /**
- * Syncs the DOJ EOIR Recognition & Accreditation roster into `organizations`.
+ * Syncs the EOIR List of Pro Bono Legal Service Providers into `organizations`.
  *
- * Dry run is the default; nothing is written without --apply.
+ * Extends the existing EOIR roster sync (same matcher, geocoder, curated-wins
+ * gate). Dry run is the default; nothing is written without --apply.
  *
  * Usage:
- *   npm run db:sync-eoir                 # dry run, prints the plan
- *   npm run db:sync-eoir -- --report     # dry run + JSON report file
- *   npm run db:sync-eoir -- --apply      # write to Supabase
- *   npm run db:sync-eoir -- --limit 25 --verbose
+ *   npm run db:sync-eoir-probono                 # dry run, prints the plan
+ *   npm run db:sync-eoir-probono -- --report     # dry run + JSON report file
+ *   npm run db:sync-eoir-probono -- --apply      # write to Supabase
+ *   npm run db:sync-eoir-probono -- --limit 25 --verbose
  *
  * Flags:
  *   --apply              perform writes (omit to preview)
- *   --limit <n>          only process the first n roster records
+ *   --limit <n>          only process the first n unique offices
  *   --skip-geocode       parse and plan without calling the geocoder
  *   --no-regeocode       leave coordinates on existing rows untouched
  *   --report [path]      write a JSON plan/duplicate report
@@ -25,8 +26,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { syncEoirOrganizations } from "../src/lib/ingestion/eoir/sync-organizations";
+import { isEoirLegacyId } from "../src/lib/ingestion/eoir/constants";
 import { formatProximityFlag } from "../src/lib/ingestion/eoir/proximity-triage";
+import { syncEoirProBonoOrganizations } from "../src/lib/ingestion/eoir/sync-organizations";
+import type { PlannedChange } from "../src/lib/ingestion/eoir/types";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -62,6 +65,30 @@ function flagValue(name: string): string | undefined {
   return next && !next.startsWith("--") ? next : undefined;
 }
 
+function existingKind(legacyId: string | null | undefined): string {
+  if (!legacyId) return "curated (no legacy_id)";
+  if (isEoirLegacyId(legacyId)) return "EOIR roster";
+  if (legacyId.startsWith("doj-probono-")) return "EOIR pro bono";
+  const scheme = legacyId.split("-")[0];
+  return `curated (${scheme}-*)`;
+}
+
+function formatDuplicate(candidate: PlannedChange): string {
+  const tokens = candidate.matchedOn?.length
+    ? `; matched on ${candidate.matchedOn.join(", ")}`
+    : "";
+  const existingKey = candidate.conflictsWithLegacyId
+    ? `; existing key ${candidate.conflictsWithLegacyId}`
+    : "";
+  const via = candidate.matchVia ? `; via ${candidate.matchVia}` : "";
+  return (
+    `  • "${candidate.name}" (${candidate.city}, ${candidate.state}) ` +
+    `resembles existing "${candidate.conflictsWith}" ` +
+    `[${existingKind(candidate.conflictsWithLegacyId)}] ` +
+    `(score ${candidate.matchScore}${via}${tokens}${existingKey})`
+  );
+}
+
 async function main() {
   const apply = hasFlag("apply");
   const limitRaw = flagValue("limit");
@@ -73,7 +100,7 @@ async function main() {
     process.exit(1);
   }
 
-  const summary = await syncEoirOrganizations({
+  const summary = await syncEoirProBonoOrganizations({
     apply,
     limit,
     skipGeocode: hasFlag("skip-geocode"),
@@ -84,14 +111,19 @@ async function main() {
 
   const label = summary.dryRun ? "DRY RUN (no writes)" : "APPLIED";
   const verb = summary.dryRun ? "would be" : "were";
+  const listings =
+    typeof summary.listingsParsed === "number"
+      ? String(summary.listingsParsed)
+      : "n/a";
 
   console.log(`
-EOIR organization sync — ${label}
+EOIR pro bono list sync — ${label}
 ────────────────────────────────────────────────
 source            ${summary.sourceUrl}
-roster updated    ${summary.reportUpdatedAt ?? "unknown"}
+list updated      ${summary.reportUpdatedAt ?? "unknown"}
 parser            ${summary.parser}
-rows parsed       ${summary.rowsParsed}
+court listings    ${listings}
+unique offices    ${summary.rowsParsed}
 rows processed    ${summary.rowsProcessed}
 
 inserted          ${summary.inserted}    (${verb} created)
@@ -111,16 +143,10 @@ status            ${summary.ok ? "ok" : "FAILED"}
 
   if (summary.duplicateCandidates.length > 0) {
     console.log(
-      `Skipped — blocked pending human resolution (${summary.skipped} record(s)):`,
+      `Skipped — blocked pending human resolution (${summary.skipped} office(s), ${summary.duplicateCandidates.length} match(es) against curated + EOIR roster):`,
     );
-    for (const candidate of summary.duplicateCandidates.slice(0, 40)) {
-      console.log(
-        `  • "${candidate.name}" (${candidate.city}, ${candidate.state}) ` +
-          `resembles existing "${candidate.conflictsWith}" (score ${candidate.matchScore})`,
-      );
-    }
-    if (summary.duplicateCandidates.length > 40) {
-      console.log(`  … and ${summary.duplicateCandidates.length - 40} more`);
+    for (const candidate of summary.duplicateCandidates) {
+      console.log(formatDuplicate(candidate));
     }
     console.log("");
   }
@@ -157,12 +183,12 @@ status            ${summary.ok ? "ok" : "FAILED"}
 
   if (summary.parseAbandonments.length > 0) {
     console.log(
-      `Parse abandonments (${summary.parseAbandonments.length} — no address before next heading):`,
+      `Parse abandonments (${summary.parseAbandonments.length} — no usable address before next heading):`,
     );
     for (const block of summary.parseAbandonments) {
-      const label = block.name ?? "(unnamed block)";
+      const name = block.name ?? "(unnamed block)";
       console.log(
-        `  • p.${block.sourcePage} [${block.reason}] "${label}"`,
+        `  • p.${block.sourcePage} [${block.reason}] "${name}"`,
       );
       for (const line of block.lines) {
         console.log(`      ${line}`);
@@ -181,10 +207,20 @@ status            ${summary.ok ? "ok" : "FAILED"}
     for (const [reason, count] of [...byReason].sort((a, b) => b[1] - a[1])) {
       console.log(`  ${String(count).padStart(4)}  ${reason}`);
     }
+    console.log("  Failed addresses (inserted without coordinates, none fabricated):");
+    for (const failure of summary.geocodeFailures) {
+      console.log(
+        `  • "${failure.name}" (${failure.city}, ${failure.state}) — ${failure.reason}`,
+      );
+    }
+    console.log("");
+  }
+
+  if (summary.insertPreview && summary.insertPreview.length > 0) {
     console.log(
-      "  (stored without coordinates; the app filters these out of the map " +
-        "until a later run or a paid fallback resolves them)",
+      `Insert sample (${summary.insertPreview.length} of ${summary.inserted} — exact payloads that would be written):`,
     );
+    console.log(JSON.stringify(summary.insertPreview, null, 2));
     console.log("");
   }
 
@@ -192,9 +228,9 @@ status            ${summary.ok ? "ok" : "FAILED"}
   for (const error of summary.errors) console.error(`error:   ${error}`);
 
   if (wantsReport) {
-    // scripts/reports/ is gitignored, so plans never land in version control.
     const reportsDir = join(root, "scripts", "reports");
-    const path = flagValue("report") ?? join(reportsDir, "eoir-sync-plan.json");
+    const path =
+      flagValue("report") ?? join(reportsDir, "eoir-probono-sync-plan.json");
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, JSON.stringify(summary, null, 2));
     console.log(`\nReport written to ${path}`);

@@ -50,7 +50,8 @@ const LINE_TOLERANCE_PT = 2;
  */
 const WORD_GAP_PT = 1.2;
 
-function joinRuns(runs: PdfTextRun[]): string {
+/** Joins runs on one visual line, inserting a space only when the gap is real. */
+export function joinRuns(runs: PdfTextRun[]): string {
   let out = "";
 
   for (let i = 0; i < runs.length; i += 1) {

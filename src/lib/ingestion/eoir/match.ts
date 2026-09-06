@@ -14,6 +14,13 @@
  * nothing. A ZIP or city agreement then has to corroborate the name, which
  * keeps distinct offices of the same multi-city organization apart.
  *
+ * A second, independent signal covers acronym-first branding: a short name
+ * whose only non-city token equals a parenthetical acronym on a longer
+ * spelled-out name ("RAICES San Antonio" ↔ "… Legal Services (RAICES)").
+ * That path does not change the overlap thresholds, which correctly reject
+ * generic near-misses (CRLA / CAIR-style) that sit on the ZIP-corroborated
+ * boundary.
+ *
  * Matches are only ever reported for human review. Nothing here mutates rows.
  */
 import { slugify } from "@/lib/ingestion/eoir/normalize";
@@ -24,6 +31,8 @@ export type MatchCandidate = {
   city: string | null;
   state: string | null;
   zip: string | null;
+  /** Passed through for reports; not used when scoring a match. */
+  legacyId?: string | null;
 };
 
 export type DuplicateMatch = {
@@ -33,12 +42,37 @@ export type DuplicateMatch = {
   sameZip: boolean;
   /** The shared tokens that are not city names — the actual evidence. */
   matchedOn: string[];
+  /**
+   * `overlap` is the token-weight thresholds. `acronym` is independent of
+   * those scores: a short branded name whose only non-city token equals a
+   * parenthetical acronym on the longer name.
+   */
+  via: "overlap" | "acronym";
 };
 
 /** Legal suffixes and connectives, which never carry identity. */
 const NOISE_TOKENS = new Set([
   "inc", "llc", "llp", "pc", "apc", "aplc", "pa", "pllc", "incorporated",
   "the", "of", "and", "for", "a", "an", "in", "at",
+]);
+
+/** Two-letter parentheticals that are USPS codes, not organization acronyms. */
+const USPS_STATE_SLUGS = new Set([
+  "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id",
+  "il", "in", "ia", "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms",
+  "mo", "mt", "ne", "nv", "nh", "nj", "nm", "ny", "nc", "nd", "oh", "ok",
+  "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut", "vt", "va", "wa", "wv",
+  "wi", "wy", "dc",
+]);
+
+/**
+ * Program-of words that sit on acronym-first brands ("HIAS New York Legal
+ * Services") the same way a city qualifier does. Used only by the acronym
+ * signal — overlap scoring is unchanged.
+ */
+const GENERIC_BRAND_TOKENS = new Set([
+  "legal", "services", "service", "center", "project", "foundation",
+  "clinic", "program", "unit", "office", "law",
 ]);
 
 /** One name is essentially contained in the other. */
@@ -74,6 +108,74 @@ function cityTokens(...cities: Array<string | null>): Set<string> {
     }
   }
   return tokens;
+}
+
+/**
+ * Identity tokens that still carry a brand after stripping this row's city
+ * and generic program-of words. Shared by the acronym matcher and the
+ * post-sync proximity scan — overlap scoring does not use this set.
+ */
+export function brandIdentityTokens(
+  name: string,
+  city: string | null,
+): Set<string> {
+  const ignorable = cityTokens(city);
+  return new Set(
+    [...identityTokens(name)].filter(
+      (token) => !ignorable.has(token) && !GENERIC_BRAND_TOKENS.has(token),
+    ),
+  );
+}
+
+/**
+ * Parenthetical acronyms as printed: "(RAICES)", "(CIP)", "(CAIR-CA)".
+ * Place names and prose in parentheses ("Silver Spring", "formerly CAIR")
+ * are ignored.
+ */
+export function parentheticalAcronyms(name: string): Set<string> {
+  const found = new Set<string>();
+  for (const match of name.matchAll(/\(([^)]+)\)/g)) {
+    const inner = match[1].trim();
+    if (/\s/.test(inner)) continue;
+    if (
+      /formerly|including|continued|^cont\b|^page\b|d\/?b\/?a/i.test(inner)
+    ) {
+      continue;
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9.'’/-]{1,14}$/.test(inner)) continue;
+    const slug = slugify(inner);
+    if (!slug || NOISE_TOKENS.has(slug)) continue;
+    if (slug.length === 2 && USPS_STATE_SLUGS.has(slug)) continue;
+    found.add(slug);
+    for (const part of slug.split("-")) {
+      if (part.length >= 3 && !NOISE_TOKENS.has(part)) found.add(part);
+    }
+  }
+  return found;
+}
+
+/**
+ * The short side is an acronym-first brand: after stripping the city and
+ * generic program-of words, exactly one identity token remains, that token is
+ * a parenthetical acronym on the longer name, and the longer name is a
+ * spelled-out expansion (not just the acronym plus a word or two).
+ */
+function acronymBrandHit(
+  shortTokens: Set<string>,
+  longTokens: Set<string>,
+  longAcronyms: Set<string>,
+  ignorable: Set<string>,
+): string | null {
+  if (longAcronyms.size === 0) return null;
+  const brand = [...shortTokens].filter(
+    (token) => !ignorable.has(token) && !GENERIC_BRAND_TOKENS.has(token),
+  );
+  if (brand.length !== 1) return null;
+  const [token] = brand;
+  if (!longAcronyms.has(token)) return null;
+  const expansion = [...longTokens].filter((part) => part !== token).length;
+  if (expansion < 3) return null;
+  return token;
 }
 
 type IndexedCandidate = {
@@ -186,15 +288,34 @@ export class DuplicateMatcher {
       const score = this.weigh(shared) / denominator;
       const sameZip = record.zip !== null && indexed.candidate.zip === record.zip;
 
-      const accepted =
+      const overlapAccepted =
         score >= CONTAINMENT_SCORE || (sameZip && score >= CORROBORATED_SCORE);
-      if (!accepted) continue;
+
+      const acronym =
+        acronymBrandHit(
+          tokens,
+          indexed.tokens,
+          parentheticalAcronyms(indexed.candidate.name),
+          ignorable,
+        ) ??
+        acronymBrandHit(
+          indexed.tokens,
+          tokens,
+          parentheticalAcronyms(record.name),
+          ignorable,
+        );
+
+      if (!overlapAccepted && !acronym) continue;
+
+      const evidence = new Set(matchedOn);
+      if (acronym) evidence.add(acronym);
 
       matches.push({
         candidate: indexed.candidate,
         score,
         sameZip,
-        matchedOn: matchedOn.sort(
+        via: overlapAccepted ? "overlap" : "acronym",
+        matchedOn: [...evidence].sort(
           (a, b) => this.weight(b) - this.weight(a),
         ),
       });
@@ -204,4 +325,24 @@ export class DuplicateMatcher {
       (a, b) => Number(b.sameZip) - Number(a.sameZip) || b.score - a.score,
     );
   }
+}
+
+/**
+ * True when one name is a fragment or containment of the other. Used to
+ * collapse same-batch office duplicates that only differ because a wrapped
+ * name was parsed twice, once in full and once as the last line.
+ */
+export function namesIndicateSameOffice(a: string, b: string): boolean {
+  const aSlug = slugify(a);
+  const bSlug = slugify(b);
+  if (!aSlug || !bSlug) return false;
+  if (aSlug === bSlug) return true;
+  if (aSlug.includes(bSlug) || bSlug.includes(aSlug)) return true;
+
+  const aTok = identityTokens(a);
+  const bTok = identityTokens(b);
+  if (aTok.size === 0 || bTok.size === 0) return false;
+  const [smaller, larger] =
+    aTok.size <= bTok.size ? [aTok, bTok] : [bTok, aTok];
+  return [...smaller].every((token) => larger.has(token));
 }

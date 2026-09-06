@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DuplicateMatcher, zipFromAddress, zipFromNaturalKey } from "./match";
+import { DuplicateMatcher, brandIdentityTokens, namesIndicateSameOffice, parentheticalAcronyms, zipFromAddress, zipFromNaturalKey } from "./match";
 import type { MatchCandidate } from "./match";
 
 /**
@@ -247,4 +247,161 @@ test("ZIP is read back out of a natural key", () => {
     "95825",
   );
   assert.equal(zipFromNaturalKey("doj-ra-opening-doors-inc-sacramento"), null);
+});
+
+test("a wrapped-name fragment is recognized as the same office as the full name", () => {
+  assert.equal(
+    namesIndicateSameOffice(
+      "Immigration Clinic",
+      "University of Texas School of Law Immigration Clinic",
+    ),
+    true,
+  );
+  assert.equal(
+    namesIndicateSameOffice(
+      "Inc. (AMFIS)",
+      "American Military Families Immigration Services, Inc. (AMFIS)",
+    ),
+    true,
+  );
+  assert.equal(
+    namesIndicateSameOffice(
+      "Immigration Services",
+      "Immigration Center for Women and Children",
+    ),
+    false,
+  );
+});
+
+test("parenthetical acronyms ignore place names, prose, and state codes", () => {
+  assert.deepEqual(
+    [...parentheticalAcronyms(
+      "Refugee and Immigrant Center for Education and Legal Services (RAICES)",
+    )],
+    ["raices"],
+  );
+  assert.deepEqual(
+    [...parentheticalAcronyms("California Immigration Project (CIP)")],
+    ["cip"],
+  );
+  const cairCa = parentheticalAcronyms("CAIR California (CAIR-CA)");
+  assert.ok(cairCa.has("cair"));
+  assert.ok(cairCa.has("cair-ca"));
+  assert.equal(parentheticalAcronyms("HIAS (Silver Spring)").size, 0);
+  assert.equal(parentheticalAcronyms("CAIR (formerly CAIR-CA)").size, 0);
+  assert.equal(parentheticalAcronyms("Something (CA)").size, 0);
+});
+
+test("an acronym-plus-city curated name matches the spelled-out legal name", () => {
+  // Overlap score is only raices / (raices + san + antonio) ≈ 0.30 — below
+  // both thresholds. The parenthetical acronym is an independent signal.
+  const curated = "RAICES San Antonio";
+  const legal =
+    "Refugee and Immigrant Center for Education and Legal Services (RAICES)";
+  assert.equal(namesIndicateSameOffice(curated, legal), false);
+
+  const matches = matcherFor(
+    candidate({
+      name: curated,
+      city: "San Antonio",
+      state: "TX",
+      zip: "78216",
+    }),
+  ).findMatches({
+    name: legal,
+    city: "San Antonio",
+    state: "TX",
+    zip: "78216",
+  });
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].via, "acronym");
+  assert.ok(matches[0].matchedOn.includes("raices"));
+  assert.ok(matches[0].score < 0.45);
+});
+
+test("an acronym-plus-city name still matches when a program-of suffix remains", () => {
+  const matches = matcherFor(
+    candidate({
+      name: "HIAS New York Legal Services",
+      city: "New York",
+      state: "NY",
+      zip: "10001",
+    }),
+  ).findMatches({
+    name: "Hebrew Immigrant Aid Society (HIAS)",
+    city: "New York",
+    state: "NY",
+    zip: "10018",
+  });
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].via, "acronym");
+  assert.ok(matches[0].matchedOn.includes("hias"));
+  assert.ok(matches[0].score < 0.45);
+});
+
+test("the acronym signal does not require a ZIP agreement", () => {
+  const matches = matcherFor(
+    candidate({
+      name: "RAICES San Antonio",
+      city: "San Antonio",
+      state: "TX",
+      zip: "78216",
+    }),
+  ).findMatches({
+    name: "Refugee and Immigrant Center for Education and Legal Services (RAICES)",
+    city: "San Antonio",
+    state: "TX",
+    zip: "78278",
+  });
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].via, "acronym");
+  assert.equal(matches[0].sameZip, false);
+});
+
+test("a multi-token brand is not collapsed to a parenthetical acronym", () => {
+  const matches = matcherFor(
+    candidate({
+      name: "Casa de Esperanza",
+      city: "Sacramento",
+      zip: "95811",
+    }),
+  ).findMatches({
+    name: "Community Action Services Agency (CASA)",
+    city: "Sacramento",
+    state: "CA",
+    zip: "95825",
+  });
+  assert.equal(matches.length, 0);
+});
+
+test("brand residue keeps a short acronym after stripping city and program-of words", () => {
+  assert.deepEqual(
+    [...brandIdentityTokens("RAICES San Antonio", "San Antonio")].sort(),
+    ["raices"],
+  );
+  assert.ok(
+    brandIdentityTokens(
+      "RAICES Texas Legal Services",
+      "San Antonio",
+    ).has("raices"),
+  );
+});
+
+test("a ZIP-corroborated generic overlap is still not a match", () => {
+  // The original 9-pair review's CRLA / Legal Services of Northern California
+  // near-miss. Shared tokens are common words; the acronym path must not
+  // rescue this, and the overlap thresholds must stay where they are.
+  const matches = matcherFor(
+    candidate({
+      name: "Legal Services of Northern California",
+      city: "Sacramento",
+      zip: "95814",
+    }),
+  ).findMatches({
+    name: "California Rural Legal Assistance Foundation (CRLAF)",
+    city: "Sacramento",
+    state: "CA",
+    zip: "95814",
+  });
+  assert.equal(matches.length, 0);
 });

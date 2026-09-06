@@ -26,6 +26,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createIngestClient } from "../src/lib/ingestion/eoir/client";
+import { organizationSourceFamily } from "../src/lib/ingestion/eoir/constants";
 import { DuplicateMatcher, zipFromAddress } from "../src/lib/ingestion/eoir/match";
 import type { MatchCandidate } from "../src/lib/ingestion/eoir/match";
 import { buildNaturalKey } from "../src/lib/ingestion/eoir/normalize";
@@ -68,11 +69,8 @@ type Row = {
   intake_status: string | null;
 };
 
-function source(row: Row): string {
-  if (!row.legacy_id) return "curated (keyless)";
-  if (row.legacy_id.startsWith("doj-ra-")) return "eoir_organizations";
-  if (row.legacy_id.startsWith("svc-")) return "curated (svc- seed)";
-  return `curated (${row.legacy_id.split("-")[0]}- seed)`;
+function sourceFamily(row: Row) {
+  return organizationSourceFamily(row.legacy_id);
 }
 
 /** Strips ", City, ST ZIP" off the end of a stored `address` value. */
@@ -183,15 +181,16 @@ async function main() {
       if (seenPairs.has(pairKey)) continue;
       const other = byId.get(match.candidate.id);
       if (!other) continue;
-      if (source(row) === source(other)) continue;
+      if (sourceFamily(row) === sourceFamily(other)) continue;
 
       seenPairs.add(pairKey);
-      const eoir = row.legacy_id?.startsWith("doj-ra-") ? row : other;
+      const eoir = sourceFamily(row) === "eoir_roster" ? row : other;
       const curated = eoir === row ? other : row;
-      // Only pairs where exactly one side is the EOIR-synced row are the
-      // "same office, two namespaces" scenario this fix targets.
-      if (!eoir.legacy_id?.startsWith("doj-ra-")) continue;
-      if (curated.legacy_id?.startsWith("doj-ra-")) continue;
+      // Only pairs where exactly one side is the EOIR roster row are the
+      // "same office, two namespaces" scenario this fix targets. svc-* and
+      // keyless are both curated and must not enter this set.
+      if (sourceFamily(eoir) !== "eoir_roster") continue;
+      if (sourceFamily(curated) !== "curated") continue;
 
       crossSourcePairs.push({ eoir, curated, score: match.score });
     }

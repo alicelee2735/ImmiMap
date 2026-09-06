@@ -5,6 +5,7 @@ import {
   buildLegacyKeyV1,
   buildNaturalKey,
   toOrganizationRow,
+  toProBonoOrganizationRow,
 } from "./normalize";
 import { buildUpdatePayload, planChanges } from "./sync-organizations";
 import type { ExistingRow } from "./sync-organizations";
@@ -136,6 +137,46 @@ test("a lookalike is flagged and blocked even when the names are not identical",
   assert.equal(duplicates.length, 1);
   assert.equal(duplicates[0].conflictsWith, "California Immigration Project");
   assert.ok(duplicates[0].matchedOn?.includes("project"));
+});
+
+test("a lookalike is flagged and blocked even when the existing row is an EOIR roster key", () => {
+  const value = record();
+  const { changes, duplicates } = planChanges(
+    [value],
+    [existing({ legacy_id: "doj-ra-casa-cornelia-law-center-san-diego-92103-aaaaaaaa" })],
+    "doj-probono",
+  );
+
+  assert.equal(changes[0].action, "skip");
+  assert.equal(duplicates.length, 1);
+  assert.ok(changes[0].naturalKey.startsWith("doj-probono-"));
+  assert.equal(
+    duplicates[0].conflictsWithLegacyId,
+    "doj-ra-casa-cornelia-law-center-san-diego-92103-aaaaaaaa",
+  );
+});
+
+test("one matcher pass holds a pro bono record against both curated and roster rows", () => {
+  const value = record();
+  const { changes, duplicates } = planChanges(
+    [value],
+    [
+      existing({ id: "curated", legacy_id: null }),
+      existing({
+        id: "roster",
+        legacy_id: "doj-ra-casa-cornelia-law-center-san-diego-92103-aaaaaaaa",
+      }),
+    ],
+    "doj-probono",
+  );
+
+  assert.equal(changes[0].action, "skip");
+  assert.equal(changes.length, 1);
+  assert.equal(duplicates.length, 2);
+  assert.deepEqual(
+    duplicates.map((row) => row.existingId).sort(),
+    ["curated", "roster"],
+  );
 });
 
 test("a lookalike is flagged and blocked even when the existing row already has a legacy_id under another scheme", () => {
@@ -282,4 +323,191 @@ test("EOIR rows do not carry default service tags", () => {
   const row = toOrganizationRow(record(), undefined);
   assert.ok(!("services" in row));
   assert.ok(!("services_offered" in row));
+});
+
+test("pro bono keys use the doj-probono prefix and the same English baseline", () => {
+  const row = toProBonoOrganizationRow(
+    {
+      ...record(),
+      courts: ["Eloy Immigration Court", "Florence Immigration Court"],
+      website: "www.example.org",
+      providerKind: "nonprofit",
+    },
+    undefined,
+  );
+  assert.ok(row.legacy_id.startsWith("doj-probono-"));
+  assert.deepEqual(row.languages, ["English"]);
+  assert.equal(row.languages_confirmed, false);
+  assert.equal(row.org_type, "NGO");
+  assert.ok(!("services" in row));
+  assert.ok(row.catchment_note?.includes("Eloy Immigration Court"));
+  assert.ok(row.website_url?.includes("example.org"));
+  assert.equal(row.legacy_id, buildNaturalKey(record(), "doj-probono"));
+  assert.equal(row.address_role, undefined);
+});
+
+test("a mailing-address listing stores the role and a site label does not", () => {
+  const mailing = toProBonoOrganizationRow(
+    { ...record(), officeLabel: "Mailing Address" },
+    undefined,
+  );
+  const physical = toProBonoOrganizationRow(
+    { ...record(), officeLabel: "Physical Address:" },
+    undefined,
+  );
+  const site = toProBonoOrganizationRow(
+    { ...record(), officeLabel: "Dallas" },
+    undefined,
+  );
+  assert.equal(mailing.address_role, "mailing");
+  assert.equal(physical.address_role, "physical");
+  assert.equal(site.address_role, undefined);
+});
+
+test("a private-attorney listing maps to Law Firm and still has no service tags", () => {
+  const row = toProBonoOrganizationRow(
+    { ...record(), providerKind: "private_attorney" },
+    undefined,
+  );
+  assert.equal(row.org_type, "Law Firm");
+  assert.equal(row.lat, null);
+  assert.equal(row.lng, null);
+  assert.ok(!("services" in row));
+  assert.match(row.description, /private attorney/);
+});
+
+test("a same-batch name fragment at the same address is skipped, keeping the full name", () => {
+  const full = record({
+    name: "University of Texas School of Law Immigration Clinic",
+    street: "727 East Dean Keeton Street",
+    city: "Austin",
+    state: "TX",
+    zip: "78705",
+    courts: ["Austin Immigration Court"],
+  });
+  const fragment = record({
+    name: "Immigration Clinic",
+    street: "727 East Dean Keeton Street",
+    city: "Austin",
+    state: "TX",
+    zip: "78705",
+    courts: ["Pearsall Immigration Court"],
+  });
+
+  const { changes, duplicates } = planChanges([fragment, full], [], "doj-probono");
+  const inserts = changes.filter((change) => change.action === "insert");
+  const skips = changes.filter((change) => change.action === "skip");
+
+  assert.equal(inserts.length, 1);
+  assert.equal(
+    inserts[0].name,
+    "University of Texas School of Law Immigration Clinic",
+  );
+  assert.equal(skips.length, 1);
+  assert.equal(skips[0].name, "Immigration Clinic");
+  assert.equal(duplicates.length, 1);
+  assert.deepEqual(full.courts?.sort(), [
+    "Austin Immigration Court",
+    "Pearsall Immigration Court",
+  ]);
+});
+
+test("a second-source alias on an existing row is an exact update, not a second insert", () => {
+  const incoming = record({
+    name: "RAICES Texas Legal Services",
+    street: "131 Interpark Blvd",
+    city: "San Antonio",
+    state: "TX",
+    zip: "78216",
+  });
+  const proBonoKey = buildNaturalKey(incoming, "doj-probono");
+  const rosterKey =
+    "doj-ra-refugee-and-immigrant-center-for-education-and-legal-services-raices-san-antonio-78216-f434850f";
+
+  const { changes, duplicates } = planChanges(
+    [incoming],
+    [
+      existing({
+        name: "RAICES San Antonio",
+        city: "San Antonio",
+        state: "TX",
+        address: "131 Interpark Blvd, San Antonio, TX 78216",
+        legacy_id: rosterKey,
+        sourceKeys: [proBonoKey],
+      }),
+    ],
+    "doj-probono",
+  );
+
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].action, "update");
+  assert.equal(changes[0].existingId, "row-1");
+  assert.equal(duplicates.length, 0);
+});
+
+test("an update matched via a second-source key keeps the primary legacy_id", () => {
+  const incoming = record({
+    name: "RAICES Texas Legal Services",
+    street: "131 Interpark Blvd",
+    city: "San Antonio",
+    state: "TX",
+    zip: "78216",
+  });
+  const row = toProBonoOrganizationRow(incoming, undefined);
+  const rosterKey =
+    "doj-ra-refugee-and-immigrant-center-for-education-and-legal-services-raices-san-antonio-78216-f434850f";
+
+  const { payload, preserved } = buildUpdatePayload(
+    row,
+    existing({
+      name: "RAICES San Antonio",
+      description: "Statewide immigration legal services nonprofit with a major San Antonio office.",
+      pricing: "Pro bono",
+      intake_status: "LIMITED",
+      legacy_id: rosterKey,
+      sourceKeys: [row.legacy_id],
+    }),
+  );
+
+  assert.equal(payload.legacy_id, rosterKey);
+  assert.ok(preserved.includes("legacy_id"));
+  assert.ok(preserved.includes("name"));
+  assert.ok(preserved.includes("verified"));
+});
+
+test("two different organizations at the same address are both inserted", () => {
+  const { changes } = planChanges(
+    [
+      record({ name: "Alpha Legal Aid", street: "100 Main Street" }),
+      record({ name: "Beta Defenders", street: "100 Main Street" }),
+    ],
+    [],
+  );
+
+  assert.equal(changes.filter((change) => change.action === "insert").length, 2);
+});
+
+test("the same organization at two different addresses in one city both insert", () => {
+  const { changes } = planChanges(
+    [
+      record({
+        name: "UNLV Immigration Clinic",
+        street: "1212 Casino Center Blvd.",
+        city: "Las Vegas",
+        state: "NV",
+        zip: "89104",
+      }),
+      record({
+        name: "UNLV Immigration Clinic",
+        street: "P.O. Box 71075",
+        city: "Las Vegas",
+        state: "NV",
+        zip: "89170",
+      }),
+    ],
+    [],
+    "doj-probono",
+  );
+
+  assert.equal(changes.filter((change) => change.action === "insert").length, 2);
 });

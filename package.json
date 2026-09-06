@@ -11,6 +11,7 @@
     "db:seed": "node scripts/seed-organizations.mjs",
     "db:ingest-real": "npx tsx scripts/ingest_real_providers.ts",
     "db:sync-eoir": "npx tsx scripts/sync-eoir-organizations.ts",
+    "db:sync-eoir-probono": "npx tsx scripts/sync-eoir-pro-bono.ts",
     "db:generate-expansion": "node scripts/generate-expansion-orgs.mjs",
     "db:check-links": "node scripts/check-organization-links.mjs",
     "db:verify-orgs": "node scripts/verify-organizations.mjs",

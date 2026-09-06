@@ -13,6 +13,8 @@ import {
   EOIR_ASSUMED_LANGUAGES,
   EOIR_DEFAULT_PRICING,
   EOIR_KEY_PREFIX,
+  EOIR_PRO_BONO_KEY_PREFIX,
+  EOIR_PRO_BONO_SOURCE_ATTRIBUTION,
   EOIR_SOURCE_ATTRIBUTION,
 } from "@/lib/ingestion/eoir/constants";
 import type {
@@ -20,6 +22,11 @@ import type {
   GeocodeRequest,
   GeocodeResult,
 } from "@/lib/ingestion/eoir/types";
+import { canonicalizeWebsiteUrl } from "@/lib/website-corrections";
+import {
+  addressRoleFromLabel,
+  type AddressRole,
+} from "@/lib/ingestion/eoir/office-label";
 
 /** Row shape written to `organizations`, excluding db-managed columns. */
 export type OrganizationUpsert = {
@@ -31,7 +38,7 @@ export type OrganizationUpsert = {
   state: string;
   lat: number | null;
   lng: number | null;
-  org_type: "NGO";
+  org_type: "NGO" | "Law Firm";
   pricing: string;
   intake_status: "OPEN";
   /**
@@ -48,6 +55,13 @@ export type OrganizationUpsert = {
    * buildUpdatePayload), and never sets it true either.
    */
   languages_confirmed: false;
+  website_url?: string;
+  catchment_note?: string;
+  /**
+   * Physical vs mailing as declared on the listing. Omitted when the source
+   * did not label one. Stored, not shown in the public UI today.
+   */
+  address_role?: AddressRole;
 };
 
 export function slugify(value: string): string {
@@ -85,6 +99,27 @@ export function normalizeStreet(street: string): string {
     .trim();
 }
 
+/**
+ * Street portion of a stored `address` ("131 Interpark Blvd, San Antonio, TX 78216").
+ * Used by the post-sync proximity scan; the natural key is built from the
+ * parsed street, not this reconstruction.
+ */
+export function streetFromStoredAddress(
+  address: string,
+  city: string | null,
+): string {
+  const trimmed = address.trim();
+  if (!trimmed) return "";
+  if (city?.trim()) {
+    const marker = `, ${city.trim()},`;
+    const idx = trimmed.toLowerCase().indexOf(marker.toLowerCase());
+    if (idx !== -1) return trimmed.slice(0, idx).trim();
+  }
+  const parts = trimmed.split(",");
+  if (parts.length <= 2) return parts[0]?.trim() ?? "";
+  return parts.slice(0, -2).join(",").trim();
+}
+
 function addressFingerprint(street: string): string {
   return createHash("sha256")
     .update(normalizeStreet(street))
@@ -93,13 +128,29 @@ function addressFingerprint(street: string): string {
 }
 
 /**
+ * Identity of one physical office, ignoring the legal name. Used to catch
+ * same-batch fragments ("Immigration Clinic" vs the full UT Law name) that
+ * mint different natural keys only because the name slug differs.
+ */
+export function addressIdentityKey(record: {
+  street: string;
+  state: string;
+  zip: string;
+}): string {
+  return `${record.state}|${record.zip}|${normalizeStreet(record.street)}`;
+}
+
+/**
  * The pre-existing key format, without an address component. Retained so the
  * sync can recognize rows written by the previous ingest and re-key them in
  * place instead of inserting duplicates.
  */
-export function buildLegacyKeyV1(record: EoirOfficeRecord): string {
+export function buildLegacyKeyV1(
+  record: EoirOfficeRecord,
+  prefix: string = EOIR_KEY_PREFIX,
+): string {
   return [
-    EOIR_KEY_PREFIX,
+    prefix,
     slugify(record.name),
     slugify(record.city),
     record.zip,
@@ -107,9 +158,12 @@ export function buildLegacyKeyV1(record: EoirOfficeRecord): string {
 }
 
 /** Stable, collision-free natural key for one roster office. */
-export function buildNaturalKey(record: EoirOfficeRecord): string {
+export function buildNaturalKey(
+  record: EoirOfficeRecord,
+  prefix: string = EOIR_KEY_PREFIX,
+): string {
   return [
-    EOIR_KEY_PREFIX,
+    prefix,
     slugify(record.name),
     slugify(record.city),
     record.zip,
@@ -142,9 +196,12 @@ export function formatAddress(record: EoirOfficeRecord): string {
   return `${record.street}, ${record.city}, ${record.state} ${record.zip}`;
 }
 
-export function toGeocodeRequest(record: EoirOfficeRecord): GeocodeRequest {
+export function toGeocodeRequest(
+  record: EoirOfficeRecord,
+  prefix: string = EOIR_KEY_PREFIX,
+): GeocodeRequest {
   return {
-    id: buildNaturalKey(record),
+    id: buildNaturalKey(record, prefix),
     street: record.street,
     city: record.city,
     state: record.state,
@@ -176,5 +233,60 @@ export function toOrganizationRow(
     // but it is not a confirmed answer from the office.
     languages: [...EOIR_ASSUMED_LANGUAGES],
     languages_confirmed: false,
+    ...optionalAddressRole(record),
   };
+}
+
+function formatProBonoCatchment(courts: string[]): string | undefined {
+  if (courts.length === 0) return undefined;
+  if (courts.length === 1) return `Listed by EOIR for ${courts[0]}.`;
+  if (courts.length === 2) {
+    return `Listed by EOIR for ${courts[0]} and ${courts[1]}.`;
+  }
+  return `Listed by EOIR for ${courts.slice(0, -1).join(", ")}, and ${courts[courts.length - 1]}.`;
+}
+
+/** Builds the row to upsert for one consolidated pro bono list office. */
+export function toProBonoOrganizationRow(
+  record: EoirOfficeRecord,
+  geocode: GeocodeResult | undefined,
+): OrganizationUpsert {
+  const kindLabel =
+    record.providerKind === "private_attorney"
+      ? "private attorney"
+      : record.providerKind === "referral"
+        ? "referral service"
+        : "nonprofit";
+
+  const website = canonicalizeWebsiteUrl(record.website ?? undefined);
+  const catchment = formatProBonoCatchment(record.courts ?? []);
+
+  return {
+    legacy_id: buildNaturalKey(record, EOIR_PRO_BONO_KEY_PREFIX),
+    name: record.name,
+    description:
+      `EOIR-listed pro bono legal service provider (${kindLabel}). ` +
+      `Source: ${EOIR_PRO_BONO_SOURCE_ATTRIBUTION}.`,
+    address: formatAddress(record),
+    city: record.city,
+    state: record.state,
+    lat: geocode?.lat ?? null,
+    lng: geocode?.lng ?? null,
+    org_type: record.providerKind === "private_attorney" ? "Law Firm" : "NGO",
+    pricing: EOIR_DEFAULT_PRICING,
+    intake_status: "OPEN",
+    verified: false,
+    languages: [...EOIR_ASSUMED_LANGUAGES],
+    languages_confirmed: false,
+    ...(website ? { website_url: website } : {}),
+    ...(catchment ? { catchment_note: catchment } : {}),
+    ...optionalAddressRole(record),
+  };
+}
+
+function optionalAddressRole(
+  record: EoirOfficeRecord,
+): { address_role: AddressRole } | Record<string, never> {
+  const role = addressRoleFromLabel(record.officeLabel);
+  return role ? { address_role: role } : {};
 }

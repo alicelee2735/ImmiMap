@@ -21,8 +21,11 @@ import type {
   EoirOfficeRecord,
   ParsedRoster,
 } from "@/lib/ingestion/eoir/types";
+import { isOfficeLabelLine } from "@/lib/ingestion/eoir/office-label";
 import { US_STATE_NAMES } from "@/lib/us-states";
 import type { USState } from "@/types/immimap";
+
+export { isOfficeLabelLine };
 
 /**
  * "Montgomery, AL 36116" — the anchor that terminates a record block.
@@ -33,9 +36,6 @@ const CITY_STATE_ZIP =
 
 /** "(334) 288-8890" and close variants. */
 const PHONE_LINE = /^\(?(\d{3})\)?[\s.\-]*(\d{3})[\s.\-]*(\d{4})$/;
-
-/** "Principal Office", "Montgomery Extension Office". */
-const OFFICE_LABEL = /(?:principal|extension|satellite)\s+office\s*$/i;
 
 /**
  * Trailing "MM/DD/YY MM/DD/YY[*] [Status]" on an organization name line.
@@ -138,11 +138,6 @@ function isSkippableNoise(text: string): boolean {
     STATUS_ONLY.test(text) ||
     DATES_STATUS_ONLY.test(text)
   );
-}
-
-/** True when a line is an office label, not a legal entity name. */
-export function isOfficeLabelLine(text: string): boolean {
-  return OFFICE_LABEL.test(text);
 }
 
 function normalizePhone(text: string): string | null {
