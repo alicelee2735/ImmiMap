@@ -460,6 +460,11 @@
         "prompt": "General questions?",
         "link": "Visit Contact"
       }
+    },
+    "volunteer": {
+      "title": "Volunteer with ImmiMap",
+      "description": "We're looking for volunteers to help with frontend development and outreach/content. If you can contribute to the product or help more people find it, we'd like to hear from you.",
+      "openForm": "Apply to volunteer"
     }
   },
   "Contact": {
