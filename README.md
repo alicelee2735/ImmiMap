@@ -34,7 +34,8 @@ Do not edit the JSON by hand, and do not run `scripts/generate-expansion-orgs.mj
 
 Reasons for individual corrections live in
 [`docs/manual-data-corrections.md`](docs/manual-data-corrections.md). A
-populated stored address is no longer overwritten by the EOIR sync; check that
+populated stored address is no longer overwritten by the EOIR sync, and its
+coordinates stay with that label (the row is not re-geocoded). Check that
 file before a roster apply for merges, deletes, and name changes. `db:seed` is
 for empty local databases only; never point it at production.
 

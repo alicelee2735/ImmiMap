@@ -3,10 +3,11 @@
 Human-reviewed writes to the live `organizations` table that a roster sync
 cannot reconstruct. `address` is in `CURATED_COLUMNS`
 (`src/lib/ingestion/eoir/sync-organizations.ts`): a later EOIR apply will
-not overwrite a populated stored street. Inserts of genuinely new offices
-still receive the roster address. This log remains the why-record for each
-write, and the check for corrections that are not a street (name, merge,
-delete).
+not overwrite a populated stored street, and will not re-geocode that row
+— `lat`/`lng` stay with the held label. Inserts of genuinely new offices
+still receive the roster address and a fresh geocode. This log remains the
+why-record for each write, and the check for corrections that are not a
+street (name, merge, delete).
 
 After each correction: update production, then `npm run db:export-catalog`
 and commit the JSON snapshot with the new log entry.

@@ -63,6 +63,7 @@ import type {
   EoirOfficeRecord,
   GeocodeResult,
   ParsedRoster,
+  PlannedAction,
   PlannedChange,
   SyncSummary,
 } from "@/lib/ingestion/eoir/types";
@@ -76,9 +77,10 @@ export type SyncOptions = {
   /** Skip geocoding entirely (parse/plan only). */
   skipGeocode?: boolean;
   /**
-   * Replace coordinates on rows that already exist. Existing rows were
-   * seeded from ZIP centroids with synthetic jitter, so refreshing them is
-   * usually desirable.
+   * Replace coordinates on existing rows whose stored address is empty
+   * (the new street is being filled). Rows with a populated address are
+   * never re-geocoded — the pin stays with the held label. `--no-regeocode`
+   * additionally leaves coords untouched even when filling a blank address.
    */
   regeocodeExisting?: boolean;
   /** Emit progress lines. */
@@ -178,7 +180,9 @@ const EXISTING_ROW_COLUMNS =
  * overwritten by a later roster PDF. Inserts never reach `buildUpdatePayload`,
  * so a genuinely new organization still gets its roster address on the way in.
  * An existing row with a blank address is also filled — only a populated
- * stored address is held back.
+ * stored address is held back. When that address is held, `lat`/`lng` are
+ * held with it: the pin must not move to a roster-geocoded street the label
+ * no longer describes.
  */
 const CURATED_COLUMNS = [
   "name",
@@ -221,6 +225,16 @@ export function buildUpdatePayload(
     preserved.push(column);
   }
 
+  // Pin stays with the held street. A roster geocode of a different EOIR
+  // listing must not move the marker while the label stays put. lat/lng are
+  // not independently curated: a blank stored address still receives the
+  // new street's coordinates.
+  if (isPopulated(previous?.address)) {
+    delete payload.lat;
+    delete payload.lng;
+    preserved.push("lat", "lng");
+  }
+
   // languages_confirmed travels with languages: it only ever transitions
   // empty → "English, unconfirmed" alongside a freshly-filled languages gap.
   // It never overwrites a value a human (or an earlier sync run) already
@@ -245,6 +259,27 @@ export function buildUpdatePayload(
   }
 
   return { payload, preserved };
+}
+
+/**
+ * Whether this record should be sent to the geocoder.
+ *
+ * Inserts always geocode. Existing rows whose stored address is populated
+ * never do — the address text is not changing (it is held), so refreshing
+ * the pin from a possibly different roster street would desync the marker
+ * from the label. Blank stored addresses still geocode the incoming street
+ * unless `--no-regeocode` and coordinates already exist.
+ */
+export function shouldGeocodeRecord(
+  action: PlannedAction,
+  previous: ExistingRow | undefined,
+  regeocodeExisting: boolean,
+): boolean {
+  if (action === "skip" || action === "duplicate") return false;
+  if (action === "insert") return true;
+  if (isPopulated(previous?.address)) return false;
+  if (regeocodeExisting) return true;
+  return previous == null || previous.lat == null || previous.lng == null;
 }
 
 function flagAddressLikeNames(
@@ -766,21 +801,16 @@ async function runEoirSync(
     const byKeyAction = new Map(changes.map((c) => [c.naturalKey, c]));
     const existingById = new Map(existing.map((row) => [row.id, row]));
 
-    // Geocode everything being inserted, plus existing rows when refreshing
-    // the ZIP-centroid coordinates they were seeded with.
+    // Inserts always geocode. Existing rows with a populated address do not
+    // — the street is held, so the pin must stay with it. Blank stored
+    // addresses still geocode the incoming street (unless --no-regeocode).
     const geocodeTargets = records.filter((record) => {
       const change = byKeyAction.get(keyOf(record));
       if (!change) return false;
-      // Never geocode a record that will not be written.
-      if (change.action === "skip") return false;
-      if (change.action === "insert") return true;
-      if (regeocodeExisting) return true;
-
-      // Otherwise only fill gaps, leaving good coordinates untouched.
       const row = change.existingId
         ? existingById.get(change.existingId)
         : undefined;
-      return !row || row.lat == null || row.lng == null;
+      return shouldGeocodeRecord(change.action, row, regeocodeExisting);
     });
 
     let geocodes = new Map<string, GeocodeResult>();
@@ -858,16 +888,19 @@ async function runEoirSync(
       if (row.lat == null || row.lng == null) {
         row.lat = previous?.lat ?? null;
         row.lng = previous?.lng ?? null;
-      } else if (
-        previous &&
-        (previous.lat !== row.lat || previous.lng !== row.lng)
-      ) {
-        summary.regeocodedExisting += 1;
       }
 
       if (change.existingId) {
         const { payload, preserved } = buildUpdatePayload(row, previous);
         summary.curatedPreserved += preserved.length;
+        if (
+          previous &&
+          typeof payload.lat === "number" &&
+          typeof payload.lng === "number" &&
+          (previous.lat !== payload.lat || previous.lng !== payload.lng)
+        ) {
+          summary.regeocodedExisting += 1;
+        }
         updates.push({ id: change.existingId, row: payload });
       }
     }

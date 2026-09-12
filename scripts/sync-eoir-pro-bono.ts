@@ -14,7 +14,7 @@
  *   --apply              perform writes (omit to preview)
  *   --limit <n>          only process the first n unique offices
  *   --skip-geocode       parse and plan without calling the geocoder
- *   --no-regeocode       leave coordinates on existing rows untouched
+ *   --no-regeocode       leave coordinates untouched even when filling a blank address
  *   --report [path]      write a JSON plan/duplicate report
  *   --verbose            progress logging
  *
@@ -135,7 +135,7 @@ duplicates        ${summary.duplicatesFlagged}     (matches behind the skips abo
 geocode matched   ${summary.geocodeMatched}
 geocode failed    ${summary.geocodeFailed}
 coords refreshed  ${summary.regeocodedExisting}
-curated kept      ${summary.curatedPreserved}     (name/description/pricing/intake/verified left as-is)
+curated kept      ${summary.curatedPreserved}     (name/description/pricing/intake/address/lat-lng/verified left as-is)
 
 duration          ${(summary.durationMs / 1000).toFixed(1)}s
 status            ${summary.ok ? "ok" : "FAILED"}
