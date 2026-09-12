@@ -1,5 +1,11 @@
 /**
- * Seeds organizations, services, and org_services from services.json + services-expansion.json.
+ * Seeds organizations, services, and org_services from services.json +
+ * services-expansion.json. For an empty local database only — do not run
+ * against production (it upserts by legacy_id and would clobber live rows).
+ *
+ * Those JSON files are a fallback snapshot. Refresh them from production
+ * with `npm run db:export-catalog` after manual corrections; see
+ * docs/manual-data-corrections.md.
  *
  * Usage:
  *   NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/seed-organizations.mjs
@@ -120,7 +126,8 @@ async function seed() {
           intake_status: entry.intakeStatus ?? null,
           languages: entry.languages ?? null,
           catchment_note: entry.catchmentNote ?? null,
-          verified: entry.type === "NGO",
+          verified: entry.verified === true,
+          languages_confirmed: entry.languagesConfirmed ?? true,
         },
         { onConflict: "legacy_id" },
       )

@@ -16,6 +16,28 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Organization catalog fallback
+
+`src/data/services.json` and `src/data/services-expansion.json` are an offline
+snapshot of the live `organizations` table. The app uses them when Supabase is
+not configured (a volunteer's first local run, missing env, or API 503).
+
+After any manual production correction (address, merge, delete), regenerate
+both files from the live table and commit them with the log entry:
+
+```bash
+npm run db:export-catalog
+```
+
+Do not edit the JSON by hand, and do not run `scripts/generate-expansion-orgs.mjs`
+— that script is the old synthetic seed and would restore stale listings.
+
+Reasons for individual corrections live in
+[`docs/manual-data-corrections.md`](docs/manual-data-corrections.md). Check that
+file before a roster sync if a plan would move a street that was already
+human-reviewed. `db:seed` is for empty local databases only; never point it at
+production.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

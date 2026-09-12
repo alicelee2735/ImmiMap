@@ -1,10 +1,20 @@
 /**
- * Generates src/data/services-expansion.json (80 verified organizations).
- * Run: node scripts/generate-expansion-orgs.mjs
+ * @deprecated Do not run. This writes the original synthetic 80-org seed and
+ * would restore stale listings (CRLA Sacramento at 828 J St, IIBA at 657
+ * Mission, BDS at 160 Schermerhorn, Centro at International Blvd).
+ *
+ * Refresh the static catalog from the live table instead:
+ *   npm run db:export-catalog
+ *
+ * See docs/manual-data-corrections.md.
  */
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+throw new Error(
+  "scripts/generate-expansion-orgs.mjs is retired. Run npm run db:export-catalog instead.",
+);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outputPath = join(__dirname, "..", "src/data/services-expansion.json");
