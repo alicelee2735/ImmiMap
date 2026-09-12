@@ -103,7 +103,7 @@ duplicates        ${summary.duplicatesFlagged}     (matches behind the skips abo
 geocode matched   ${summary.geocodeMatched}
 geocode failed    ${summary.geocodeFailed}
 coords refreshed  ${summary.regeocodedExisting}
-curated kept      ${summary.curatedPreserved}     (name/description/pricing/intake/verified left as-is)
+curated kept      ${summary.curatedPreserved}     (name/description/pricing/intake/address/verified left as-is)
 
 duration          ${(summary.durationMs / 1000).toFixed(1)}s
 status            ${summary.ok ? "ok" : "FAILED"}

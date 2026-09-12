@@ -221,6 +221,7 @@ test("curated values the roster cannot know are left in place", () => {
   );
 
   assert.deepEqual(preserved.sort(), [
+    "address",
     "description",
     "intake_status",
     "name",
@@ -231,11 +232,11 @@ test("curated values the roster cannot know are left in place", () => {
   assert.ok(!("description" in payload));
   assert.ok(!("pricing" in payload));
   assert.ok(!("intake_status" in payload));
+  assert.ok(!("address" in payload));
   assert.ok(!("verified" in payload));
 
   // Columns the roster is authoritative for still get written.
   assert.equal(payload.legacy_id, row.legacy_id);
-  assert.equal(payload.address, row.address);
   assert.equal(payload.city, row.city);
   assert.equal(payload.lat, row.lat);
 });
@@ -244,13 +245,55 @@ test("curated columns are filled when the row has nothing there", () => {
   const row = toOrganizationRow(record(), undefined);
   const { payload, preserved } = buildUpdatePayload(row, existing());
 
-  // A stored row always has a name, so that one is held back here.
-  // verified is never written on update regardless of the stored value.
-  assert.deepEqual(preserved.sort(), ["name", "verified"]);
+  // A stored row always has a name and (in this fixture) an address, so
+  // those are held back. verified is never written on update regardless of
+  // the stored value.
+  assert.deepEqual(preserved.sort(), ["address", "name", "verified"]);
   assert.equal(payload.description, row.description);
   assert.equal(payload.pricing, row.pricing);
   assert.equal(payload.intake_status, row.intake_status);
   assert.ok(!("verified" in payload));
+});
+
+test("a stored address is never overwritten, even when the roster street differs", () => {
+  const row = toOrganizationRow(
+    record({ street: "9999 Different Avenue, Suite 1" }),
+    undefined,
+  );
+  const stored = "177 Livingston Street, 5th Floor, Brooklyn, NY 11201";
+  const { payload, preserved } = buildUpdatePayload(
+    row,
+    existing({ address: stored }),
+  );
+
+  assert.ok(preserved.includes("address"));
+  assert.ok(!("address" in payload));
+  assert.notEqual(row.address, stored);
+});
+
+test("an empty stored address is filled from the roster", () => {
+  const row = toOrganizationRow(record(), undefined);
+  const { payload, preserved } = buildUpdatePayload(
+    row,
+    existing({ address: null }),
+  );
+
+  assert.ok(!preserved.includes("address"));
+  assert.equal(payload.address, row.address);
+});
+
+test("a new organization with no stored row is an insert, not an address-preserving update", () => {
+  const value = record();
+  const { changes } = planChanges([value], []);
+  const row = toOrganizationRow(value, undefined);
+
+  assert.equal(changes[0].action, "insert");
+  assert.ok(row.address);
+  // Inserts skip buildUpdatePayload; a blank previous also leaves address
+  // on the payload, so a first write still stores the roster street.
+  const { payload, preserved } = buildUpdatePayload(row, undefined);
+  assert.ok(!preserved.includes("address"));
+  assert.equal(payload.address, row.address);
 });
 
 test("an empty string counts as nothing, not as a curated value", () => {

@@ -33,10 +33,10 @@ Do not edit the JSON by hand, and do not run `scripts/generate-expansion-orgs.mj
 — that script is the old synthetic seed and would restore stale listings.
 
 Reasons for individual corrections live in
-[`docs/manual-data-corrections.md`](docs/manual-data-corrections.md). Check that
-file before a roster sync if a plan would move a street that was already
-human-reviewed. `db:seed` is for empty local databases only; never point it at
-production.
+[`docs/manual-data-corrections.md`](docs/manual-data-corrections.md). A
+populated stored address is no longer overwritten by the EOIR sync; check that
+file before a roster apply for merges, deletes, and name changes. `db:seed` is
+for empty local databases only; never point it at production.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

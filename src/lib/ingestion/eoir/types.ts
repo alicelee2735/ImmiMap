@@ -199,7 +199,7 @@ export type SyncSummary = {
   regeocodedExisting: number;
   /**
    * Curated field values left in place because the roster has no authority
-   * over them (name, description, pricing, intake status).
+   * over them (name, description, pricing, intake status, address).
    */
   curatedPreserved: number;
   /**

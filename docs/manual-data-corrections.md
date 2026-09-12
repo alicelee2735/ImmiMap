@@ -1,9 +1,12 @@
 # Manual organization data corrections
 
 Human-reviewed writes to the live `organizations` table that a roster sync
-cannot reconstruct. Address is **not** in `CURATED_COLUMNS`
-(`src/lib/ingestion/eoir/sync-organizations.ts`), so a later EOIR apply
-could overwrite a corrected street unless this log is checked first.
+cannot reconstruct. `address` is in `CURATED_COLUMNS`
+(`src/lib/ingestion/eoir/sync-organizations.ts`): a later EOIR apply will
+not overwrite a populated stored street. Inserts of genuinely new offices
+still receive the roster address. This log remains the why-record for each
+write, and the check for corrections that are not a street (name, merge,
+delete).
 
 After each correction: update production, then `npm run db:export-catalog`
 and commit the JSON snapshot with the new log entry.

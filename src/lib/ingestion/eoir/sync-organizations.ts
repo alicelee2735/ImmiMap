@@ -172,6 +172,13 @@ const EXISTING_ROW_COLUMNS =
  * `languages` belongs here so the roster's English baseline only ever fills
  * an empty gap. It must never clobber a real, human-confirmed language list
  * (see the `languages_confirmed` handling below, which travels with it).
+ *
+ * `address` is the same fill-gap rule. A human-reviewed street (Centro's
+ * E. 12th, HIAS Broadway, BDS Livingston, IIBA Second Street) must not be
+ * overwritten by a later roster PDF. Inserts never reach `buildUpdatePayload`,
+ * so a genuinely new organization still gets its roster address on the way in.
+ * An existing row with a blank address is also filled — only a populated
+ * stored address is held back.
  */
 const CURATED_COLUMNS = [
   "name",
@@ -179,6 +186,7 @@ const CURATED_COLUMNS = [
   "pricing",
   "intake_status",
   "languages",
+  "address",
 ] as const;
 
 /** Treats an empty array the same as null/undefined/"" — nothing curated stored yet. */
