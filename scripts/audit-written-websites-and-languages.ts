@@ -423,10 +423,6 @@ async function main() {
 
   await mapPool(pending, options.concurrency, async (org) => {
     const storedUrl = org.website_url ?? "";
-    const isWritten =
-      org.website_scope === "local" || org.website_scope === "parent";
-
-    let urlRow: UrlAuditRow | null = null;
     const format = checkStoredUrlFormat(storedUrl);
     const fetchUrl = format.ok
       ? storedUrl
@@ -447,43 +443,41 @@ async function main() {
       fetched = classifyNetworkError(error);
     }
 
-    if (isWritten) {
-      if (!format.ok) {
-        urlRow = {
-          id: org.id,
-          name: org.name,
-          city: org.city,
-          state: org.state,
-          websiteScope: org.website_scope,
-          storedUrl,
-          formatOk: false,
-          formatErrors: format.errors,
-          verdict: "format_invalid",
-          pullBack: true,
-          statusCode: fetched.statusCode,
-          finalUrl: fetched.finalUrl,
-          error: format.errors.join("; "),
-        };
-      } else {
-        const live = classifyLive(storedUrl, fetched);
-        urlRow = {
-          id: org.id,
-          name: org.name,
-          city: org.city,
-          state: org.state,
-          websiteScope: org.website_scope,
-          storedUrl,
-          formatOk: true,
-          formatErrors: [],
-          verdict: live.verdict,
-          pullBack: live.pullBack,
-          statusCode: fetched.statusCode,
-          finalUrl: fetched.finalUrl,
-          error: live.error,
-        };
-      }
+    let urlRow: UrlAuditRow | null = null;
+    if (org.website_scope === "local" || org.website_scope === "parent") {
+      const websiteScope = org.website_scope;
+      urlRow = !format.ok
+        ? {
+            id: org.id,
+            name: org.name,
+            city: org.city,
+            state: org.state,
+            websiteScope,
+            storedUrl,
+            formatOk: false,
+            formatErrors: format.errors,
+            verdict: "format_invalid",
+            pullBack: true,
+            statusCode: fetched.statusCode,
+            finalUrl: fetched.finalUrl,
+            error: format.errors.join("; "),
+          }
+        : {
+            id: org.id,
+            name: org.name,
+            city: org.city,
+            state: org.state,
+            websiteScope,
+            storedUrl,
+            formatOk: true,
+            formatErrors: [],
+            ...classifyLive(storedUrl, fetched),
+            statusCode: fetched.statusCode,
+            finalUrl: fetched.finalUrl,
+          };
       checkpoint.urlRows[org.id] = urlRow;
     }
+    const isWritten = urlRow != null;
 
     const langRow: LangAuditRow = {
       id: org.id,
