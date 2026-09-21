@@ -4,20 +4,27 @@ import type {
   OrganizationWithServices,
   UpdateOrganizationInput,
 } from "@/types/database.types";
-import type { ImmigrationService, ServiceOffering, USState } from "@/types/immimap";
 import {
   getSupabaseAdminClient,
   getSupabaseClient,
   isSupabaseConfigured,
 } from "@/lib/supabaseClient";
-import { canonicalizeWebsiteUrl, wasWebsiteHostCorrected } from "@/lib/website-corrections";
-import { isEoirLegacyId } from "@/lib/ingestion/eoir/constants";
+import { canonicalizeWebsiteUrl } from "@/lib/website-corrections";
+import { parseLanguageEvidence } from "@/lib/language-evidence";
+import {
+  parseWebsiteScope,
+  toMapImmigrationService,
+} from "@/lib/organization-mappers";
+import type { ImmigrationService } from "@/types/immimap";
+
+export { organizationToImmigrationService } from "@/lib/organization-mappers";
 
 type OrgRow = {
   id: string;
   name: string;
   description: string | null;
   website_url: string | null;
+  website_scope?: "local" | "parent" | null;
   is_website_active?: boolean | null;
   website_checked_at?: string | null;
   website_check_error?: string | null;
@@ -33,10 +40,11 @@ type OrgRow = {
   intake_status: "OPEN" | "LIMITED" | "WAITLISTED" | null;
   languages: string[] | null;
   languages_confirmed?: boolean | null;
+  languages_evidence?: unknown;
   catchment_note: string | null;
   verified?: boolean | null;
   org_services: Array<{
-    services: { id: string; name: string } | null;
+    services: { id?: string; name: string } | null;
   }>;
 };
 
@@ -67,12 +75,35 @@ const LINK_STATUS_FIELDS = `
   website_check_error
 `;
 
-const ORG_FIELDS = `${CORE_ORG_FIELDS},
-  ${LINK_STATUS_FIELDS}
+const MAP_ORG_FIELDS = `
+  id,
+  name,
+  address,
+  city,
+  state,
+  lat,
+  lng,
+  legacy_id,
+  org_type,
+  pricing,
+  languages,
+  verified
 `;
 
-function buildOrgSelect(category?: string, includeLinkStatus = true) {
-  const fields = includeLinkStatus ? ORG_FIELDS : CORE_ORG_FIELDS;
+function buildOrgSelect(
+  category?: string,
+  includeLinkStatus = true,
+  includeWebsiteScope = true,
+  includeLanguagesEvidence = true,
+) {
+  const extras = [
+    includeWebsiteScope ? "website_scope" : null,
+    includeLanguagesEvidence ? "languages_evidence" : null,
+    includeLinkStatus ? LINK_STATUS_FIELDS : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(",\n  ");
+  const fields = extras ? `${CORE_ORG_FIELDS},\n  ${extras}` : CORE_ORG_FIELDS;
   const orgServices = category
     ? "org_services!inner ( services!inner ( id, name ) )"
     : "org_services ( services ( id, name ) )";
@@ -92,6 +123,20 @@ function isMissingLinkStatusColumnError(error: { message?: string; code?: string
   );
 }
 
+function isMissingWebsiteScopeColumnError(
+  error: { message?: string; code?: string } | null,
+): boolean {
+  if (!error) return false;
+  return (error.message ?? "").includes("website_scope");
+}
+
+function isMissingLanguagesEvidenceColumnError(
+  error: { message?: string; code?: string } | null,
+): boolean {
+  if (!error) return false;
+  return (error.message ?? "").includes("languages_evidence");
+}
+
 function mapRow(row: OrgRow): OrganizationWithServices | null {
   if (
     row.lat == null ||
@@ -102,15 +147,22 @@ function mapRow(row: OrgRow): OrganizationWithServices | null {
     return null;
   }
 
-  const services = row.org_services
+  const services = (row.org_services ?? [])
     .map((link) => link.services)
-    .filter((service): service is { id: string; name: string } => Boolean(service));
+    .filter((service): service is { id?: string; name: string } =>
+      Boolean(service?.name),
+    )
+    .map((service) => ({
+      id: service.id ?? "",
+      name: service.name,
+    }));
 
   return {
     id: row.id,
     name: row.name,
     description: row.description ?? undefined,
     website_url: canonicalizeWebsiteUrl(row.website_url ?? undefined),
+    website_scope: parseWebsiteScope(row.website_scope),
     is_website_active: row.is_website_active ?? true,
     website_checked_at: row.website_checked_at ?? null,
     website_check_error: row.website_check_error ?? null,
@@ -127,52 +179,9 @@ function mapRow(row: OrgRow): OrganizationWithServices | null {
     intake_status: row.intake_status ?? undefined,
     languages: row.languages ?? undefined,
     languages_confirmed: row.languages_confirmed ?? undefined,
+    languages_evidence: parseLanguageEvidence(row.languages_evidence),
     catchment_note: row.catchment_note ?? undefined,
     verified: row.verified === true,
-  };
-}
-
-export function organizationToImmigrationService(
-  org: OrganizationWithServices,
-): ImmigrationService | null {
-  if (!org.address) {
-    return null;
-  }
-
-  const servicesOffered = org.services
-    .map((service) => service.name)
-    .filter((name): name is ServiceOffering => Boolean(name));
-
-  const latitude = Number(org.lat);
-  const longitude = Number(org.lng);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return null;
-  }
-
-  return {
-    id: org.legacy_id ?? org.id,
-    dbId: org.id,
-    name: org.name,
-    type: org.org_type ?? "NGO",
-    state: org.state as USState,
-    city: org.city,
-    address: org.address,
-    latitude,
-    longitude,
-    pricing: (org.pricing as ImmigrationService["pricing"]) ?? "Low-cost",
-    services_offered: servicesOffered,
-    thumbnail_image_url: org.thumbnail_image_url ?? "",
-    website: canonicalizeWebsiteUrl(org.website_url),
-    isWebsiteActive: wasWebsiteHostCorrected(org.website_url)
-      ? true
-      : (org.is_website_active ?? true),
-    description: org.description,
-    intakeStatus: org.intake_status,
-    languages: org.languages,
-    languagesConfirmed: org.languages_confirmed ?? true,
-    catchmentNote: org.catchment_note,
-    verified: org.verified === true,
-    eoirSourced: isEoirLegacyId(org.legacy_id),
   };
 }
 
@@ -250,10 +259,22 @@ export async function fetchOrganizations(
       : [filters.state]
     : [];
 
-  const loadPage = (from: number, includeLinkStatus: boolean) => {
+  const loadPage = (
+    from: number,
+    includeLinkStatus: boolean,
+    includeWebsiteScope: boolean,
+    includeLanguagesEvidence: boolean,
+  ) => {
     let query = supabase
       .from("organizations")
-      .select(buildOrgSelect(filters.category, includeLinkStatus))
+      .select(
+        buildOrgSelect(
+          filters.category,
+          includeLinkStatus,
+          includeWebsiteScope,
+          includeLanguagesEvidence,
+        ),
+      )
       .order("name")
       .order("id")
       .range(from, from + POSTGREST_PAGE_SIZE - 1);
@@ -276,10 +297,19 @@ export async function fetchOrganizations(
     return query;
   };
 
-  const loadPages = async (includeLinkStatus: boolean) => {
+  const loadPages = async (
+    includeLinkStatus: boolean,
+    includeWebsiteScope: boolean,
+    includeLanguagesEvidence: boolean,
+  ) => {
     const rows: OrgRow[] = [];
     for (let from = 0; ; from += POSTGREST_PAGE_SIZE) {
-      const { data, error } = await loadPage(from, includeLinkStatus);
+      const { data, error } = await loadPage(
+        from,
+        includeLinkStatus,
+        includeWebsiteScope,
+        includeLanguagesEvidence,
+      );
       if (error) return { rows, error };
       if (!data || data.length === 0) break;
       rows.push(...(data as unknown as OrgRow[]));
@@ -288,13 +318,39 @@ export async function fetchOrganizations(
     return { rows, error: null };
   };
 
-  let { rows, error } = await loadPages(true);
+  let includeLinkStatus = true;
+  let includeWebsiteScope = true;
+  let includeLanguagesEvidence = true;
+  let { rows, error } = await loadPages(
+    includeLinkStatus,
+    includeWebsiteScope,
+    includeLanguagesEvidence,
+  );
 
+  if (isMissingWebsiteScopeColumnError(error)) {
+    includeWebsiteScope = false;
+    ({ rows, error } = await loadPages(
+      includeLinkStatus,
+      includeWebsiteScope,
+      includeLanguagesEvidence,
+    ));
+  }
+  if (isMissingLanguagesEvidenceColumnError(error)) {
+    includeLanguagesEvidence = false;
+    ({ rows, error } = await loadPages(
+      includeLinkStatus,
+      includeWebsiteScope,
+      includeLanguagesEvidence,
+    ));
+  }
   // Pre-migration environments: fall back without link-status columns.
   if (isMissingLinkStatusColumnError(error)) {
-    const retry = await loadPages(false);
-    rows = retry.rows;
-    error = retry.error;
+    includeLinkStatus = false;
+    ({ rows, error } = await loadPages(
+      includeLinkStatus,
+      includeWebsiteScope,
+      includeLanguagesEvidence,
+    ));
   }
 
   if (error) {
@@ -306,6 +362,43 @@ export async function fetchOrganizations(
     .filter((org): org is OrganizationWithServices => org !== null);
 }
 
+/**
+ * Slim catalog for the map: every mappable point, without detail-sheet
+ * fields (description, website, website_scope, intake, catchment,
+ * languages_evidence).
+ */
+export async function fetchMapOrganizations(): Promise<ImmigrationService[]> {
+  if (!isSupabaseConfigured()) {
+    return [];
+  }
+
+  const supabase = getSupabaseAdminClient();
+  const select = `${MAP_ORG_FIELDS}, org_services ( services ( name ) )`;
+  const rows: OrgRow[] = [];
+
+  for (let from = 0; ; from += POSTGREST_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("organizations")
+      .select(select)
+      .order("name")
+      .order("id")
+      .range(from, from + POSTGREST_PAGE_SIZE - 1);
+
+    if (error) {
+      throw error;
+    }
+    if (!data || data.length === 0) break;
+    rows.push(...(data as unknown as OrgRow[]));
+    if (data.length < POSTGREST_PAGE_SIZE) break;
+  }
+
+  return rows
+    .map(mapRow)
+    .filter((org): org is OrganizationWithServices => org !== null)
+    .map(toMapImmigrationService)
+    .filter((service): service is ImmigrationService => service !== null);
+}
+
 export async function createOrganization(
   input: CreateOrganizationInput,
 ): Promise<OrganizationWithServices> {
@@ -313,11 +406,31 @@ export async function createOrganization(
   const { service_names = [], ...orgFields } = input;
 
   // Select without link-status columns so create works before and after migration 006.
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("organizations")
     .insert(orgFields)
-    .select(buildOrgSelect(undefined, false))
+    .select(buildOrgSelect(undefined, false, true, true))
     .single();
+
+  if (isMissingWebsiteScopeColumnError(error)) {
+    const retry = await supabase
+      .from("organizations")
+      .insert(orgFields)
+      .select(buildOrgSelect(undefined, false, false, true))
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
+
+  if (isMissingLanguagesEvidenceColumnError(error)) {
+    const retry = await supabase
+      .from("organizations")
+      .insert(orgFields)
+      .select(buildOrgSelect(undefined, false, false, false))
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error || !data) {
     throw error ?? new Error("Failed to create organization.");
@@ -350,16 +463,70 @@ export async function fetchOrganizationById(
   }
 
   const supabase = getSupabaseClient();
+  let includeLinkStatus = true;
+  let includeWebsiteScope = true;
+  let includeLanguagesEvidence = true;
   let { data, error } = await supabase
     .from("organizations")
-    .select(buildOrgSelect(undefined, true))
+    .select(
+      buildOrgSelect(
+        undefined,
+        includeLinkStatus,
+        includeWebsiteScope,
+        includeLanguagesEvidence,
+      ),
+    )
     .eq("id", id)
     .maybeSingle();
 
-  if (isMissingLinkStatusColumnError(error)) {
+  if (isMissingWebsiteScopeColumnError(error)) {
+    includeWebsiteScope = false;
     const retry = await supabase
       .from("organizations")
-      .select(buildOrgSelect(undefined, false))
+      .select(
+        buildOrgSelect(
+          undefined,
+          includeLinkStatus,
+          includeWebsiteScope,
+          includeLanguagesEvidence,
+        ),
+      )
+      .eq("id", id)
+      .maybeSingle();
+    data = retry.data;
+    error = retry.error;
+  }
+
+  if (isMissingLanguagesEvidenceColumnError(error)) {
+    includeLanguagesEvidence = false;
+    const retry = await supabase
+      .from("organizations")
+      .select(
+        buildOrgSelect(
+          undefined,
+          includeLinkStatus,
+          includeWebsiteScope,
+          includeLanguagesEvidence,
+        ),
+      )
+      .eq("id", id)
+      .maybeSingle();
+    data = retry.data;
+    error = retry.error;
+  }
+
+  if (isMissingLinkStatusColumnError(error)) {
+    includeLinkStatus = false;
+    const retry = await supabase
+      .from("organizations")
+      .select(
+        buildOrgSelect(
+          undefined,
+          includeLinkStatus,
+          includeWebsiteScope,
+          includeLanguagesEvidence,
+        ),
+      )
       .eq("id", id)
       .maybeSingle();
     data = retry.data;

@@ -86,3 +86,36 @@ test("toggleOptInSelection adds further specific items", () => {
 test("toggleOptInSelection removing the last item returns to All", () => {
   assert.deepEqual(toggleOptInSelection(["Asylum"], "Asylum"), []);
 });
+
+test("filterServices keeps unknown pricing when every tier is selected", () => {
+  const unknown = { ...org("unknown", ["Asylum"]), pricing: undefined };
+  const rows = [org("pro-bono", ["Asylum"]), unknown];
+  const filtered = filterServices(rows, {
+    states: ALL_STATES,
+    categories: [],
+    availableServiceTypes: collectServiceTypes(rows),
+    pricingTiers: ["pro_bono", "low_cost", "paid"],
+    languages: [],
+  });
+  assert.deepEqual(
+    filtered.map((row) => row.id),
+    ["pro-bono", "unknown"],
+  );
+});
+
+test("filterServices excludes unknown pricing when a specific tier is on", () => {
+  const unknown = { ...org("unknown", ["Asylum"]), pricing: undefined };
+  const lowCost = { ...org("low", ["Asylum"]), pricing: "Low-cost" as const };
+  const rows = [org("pro-bono", ["Asylum"]), unknown, lowCost];
+  const filtered = filterServices(rows, {
+    states: ALL_STATES,
+    categories: [],
+    availableServiceTypes: collectServiceTypes(rows),
+    pricingTiers: ["low_cost"],
+    languages: [],
+  });
+  assert.deepEqual(
+    filtered.map((row) => row.id),
+    ["low"],
+  );
+});

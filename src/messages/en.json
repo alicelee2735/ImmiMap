@@ -137,6 +137,7 @@
     "resultsEyebrow": "Provider Directory",
     "resultsTitle": "Immigration providers",
     "resultsCount": "{count, plural, =0 {No providers} one {# provider} other {# providers}} found",
+    "loadMore": "Load more",
     "liveResults": "Live filters",
     "viewDetails": "View details ➔",
     "filtersPill": "Filters",
@@ -255,6 +256,8 @@
     "languagesAssumedLabel": "Languages (assumed)",
     "languagesAssumedValue": "{languages} (assumed — not yet confirmed)",
     "languagesAssumedHint": "Based on DOJ recognition requirements, not a confirmed answer from this office.",
+    "pricingUnconfirmedLabel": "Pricing (not confirmed)",
+    "pricingUnconfirmedHint": "Fee information has not been confirmed for this office.",
     "servicesLabel": "Services offered",
     "eoirRecognitionNote": "DOJ-recognized for general immigration representation",
     "provenanceLabel": "Registry synchronized:",
@@ -268,7 +271,8 @@
   "Pricing": {
     "pro_bono": "Pro bono",
     "low_cost": "Low-cost",
-    "paid": "Paid"
+    "paid": "Paid",
+    "unconfirmed": "Pricing not confirmed"
   },
   "Provenance": {
     "sourceLine": "Data sourced from {source}.",

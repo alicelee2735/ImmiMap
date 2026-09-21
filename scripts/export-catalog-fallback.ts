@@ -6,10 +6,11 @@
  *   src/data/services.json            — curated rows (svc-* / keyless)
  *   src/data/services-expansion.json  — EOIR R&A and pro bono rows
  *
- * Together the two files should equal every mappable live org. Do not edit
- * them by hand; they will drift. After any manual address/name/merge/delete
- * on production, re-run this script and commit the JSON plus an entry in
- * docs/manual-data-corrections.md.
+ * Together the two files should equal every mappable live org. IRS EO BMF
+ * HQ-mailing rows (`irs-eo-*`) land in the expansion file, not curated.
+ * Do not edit them by hand; they will drift. After any manual
+ * address/name/merge/delete on production, re-run this script and commit
+ * the JSON plus an entry in docs/manual-data-corrections.md.
  *
  * Usage:
  *   npm run db:export-catalog
@@ -31,9 +32,10 @@ import {
   organizationSourceFamily,
 } from "../src/lib/ingestion/eoir/constants";
 import { canonicalizeWebsiteUrl, wasWebsiteHostCorrected } from "../src/lib/website-corrections";
+import { parseLanguageEvidence } from "../src/lib/language-evidence";
+import { parsePricingLabel } from "../src/lib/organization-mappers";
 import type {
   ImmigrationService,
-  PricingLabel,
   ProviderType,
   ServiceOffering,
   USState,
@@ -78,6 +80,7 @@ type LiveRow = {
   intake_status: ImmigrationService["intakeStatus"] | null;
   languages: string[] | null;
   languages_confirmed: boolean | null;
+  languages_evidence: unknown[] | null;
   catchment_note: string | null;
   verified: boolean | null;
   org_services: Array<{ services: { id: string; name: string } | null } | null>;
@@ -86,7 +89,7 @@ type LiveRow = {
 const SELECT = `
   id, name, description, website_url, is_website_active, address, city, state,
   lat, lng, legacy_id, org_type, pricing, thumbnail_image_url, intake_status,
-  languages, languages_confirmed, catchment_note, verified,
+  languages, languages_confirmed, languages_evidence, catchment_note, verified,
   org_services ( services ( id, name ) )
 `;
 
@@ -111,6 +114,8 @@ function toCatalogEntry(row: LiveRow): ImmigrationService | null {
     .map((link) => link?.services?.name)
     .filter((name): name is ServiceOffering => Boolean(name));
 
+  const pricing = parsePricingLabel(row.pricing);
+
   const entry: ImmigrationService = {
     id: row.legacy_id ?? row.id,
     dbId: row.id,
@@ -121,7 +126,7 @@ function toCatalogEntry(row: LiveRow): ImmigrationService | null {
     address: row.address,
     latitude,
     longitude,
-    pricing: (row.pricing as PricingLabel) ?? "Low-cost",
+    ...(pricing ? { pricing } : {}),
     services_offered: servicesOffered,
     thumbnail_image_url: row.thumbnail_image_url ?? "",
     verified: row.verified === true,
@@ -139,6 +144,10 @@ function toCatalogEntry(row: LiveRow): ImmigrationService | null {
     entry.languages = row.languages;
   }
   entry.languagesConfirmed = row.languages_confirmed ?? true;
+  const languagesEvidence = parseLanguageEvidence(row.languages_evidence);
+  if (languagesEvidence.length > 0) {
+    entry.languagesEvidence = languagesEvidence;
+  }
   if (row.catchment_note) entry.catchmentNote = row.catchment_note;
 
   return entry;
@@ -198,7 +207,7 @@ async function main() {
     `Exported ${curated.length} curated → src/data/services.json`,
   );
   console.log(
-    `Exported ${eoir.length} EOIR/pro bono → src/data/services-expansion.json`,
+    `Exported ${eoir.length} EOIR/pro bono/IRS EO → src/data/services-expansion.json`,
   );
   console.log(`Skipped ${skipped} live row(s) missing address/city/state/pin`);
   console.log(`Live rows read: ${rows.length}`);

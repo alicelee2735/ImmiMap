@@ -8,6 +8,7 @@ import { useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ImmimapMap } from "@/components/map/immimap-map";
+import { PricingBadge } from "@/components/map/pricing-badge";
 import { MapZoomControls, type MapCommands } from "@/components/map/map-zoom-controls";
 import { MobileFiltersControl } from "@/components/map/mobile-filters-control";
 import { ServiceDetailSheet } from "@/components/map/service-detail-sheet";
@@ -21,6 +22,10 @@ import {
 import { useMobileSheetHeight } from "@/hooks/use-mobile-sheet-height";
 import { useOrganizations } from "@/hooks/use-organizations";
 import {
+  pagesNeededForIndex,
+  paginateResults,
+} from "@/lib/map-results-page";
+import {
   filterServicesByQuery,
   filterServicesByCity,
   getServiceCity,
@@ -29,20 +34,7 @@ import {
 import { STATE_BOUNDING_BOXES } from "@/lib/us-states";
 import { cn } from "@/lib/utils";
 import { filterServices, useMapFiltersStore, ALL_STATES, areFiltersAtDefaults, collectServiceTypes } from "@/stores/map-filters";
-import type {
-  ImmigrationService,
-  PricingLabel,
-} from "@/types/immimap";
-
-function pricingBadgeClassName() {
-  return "rounded-sm border border-route-blue/30 bg-paper font-medium uppercase tracking-wide text-ink-navy";
-}
-
-const PRICING_LABEL_TO_KEY: Record<PricingLabel, "pro_bono" | "low_cost" | "paid"> = {
-  "Pro bono": "pro_bono",
-  "Low-cost": "low_cost",
-  Paid: "paid",
-};
+import type { ImmigrationService } from "@/types/immimap";
 
 function searchFromQueryParam(q: string | null): OrganizationSearchValues {
   const query = q?.trim() ?? "";
@@ -128,7 +120,6 @@ function ServiceResultCard({
   setHoveredId,
 }: ServiceResultCardProps) {
   const tMap = useTranslations("Map");
-  const tPrice = useTranslations("Pricing");
   const cardRef = useRef<HTMLDivElement | null>(null);
   const city = getServiceCity(service);
   const locationLabel = city ? `${city}, ${service.state}` : service.state;
@@ -180,12 +171,7 @@ function ServiceResultCard({
             {service.services_offered[0]}
           </Badge>
           ) : null}
-          <Badge
-            variant="outline"
-            className={pricingBadgeClassName()}
-          >
-            {tPrice(PRICING_LABEL_TO_KEY[service.pricing])}
-          </Badge>
+          <PricingBadge pricing={service.pricing} />
         </div>
 
         <h3 className="font-serif text-base font-semibold tracking-tight text-ink-navy sm:text-lg">
@@ -318,6 +304,29 @@ export function MapDashboard() {
     search.selectedState,
     search.query,
   ]);
+
+  const [loadedPages, setLoadedPages] = useState(1);
+  const visibleKey = useMemo(
+    () => visible.map((service) => service.id).join("\0"),
+    [visible],
+  );
+
+  useEffect(() => {
+    setLoadedPages(1);
+  }, [visibleKey]);
+
+  useEffect(() => {
+    if (!selectedServiceId) return;
+    const index = visible.findIndex((service) => service.id === selectedServiceId);
+    if (index < 0) return;
+    const needed = pagesNeededForIndex(index);
+    setLoadedPages((pages) => (pages < needed ? needed : pages));
+  }, [selectedServiceId, visible]);
+
+  const listed = useMemo(
+    () => paginateResults(visible, loadedPages),
+    [visible, loadedPages],
+  );
 
   useEffect(() => {
     if (
@@ -551,7 +560,7 @@ export function MapDashboard() {
             ) : null}
             {!loading && !fatalError && !empty ? (
               <div className="divide-y divide-gray-200">
-                {visible.map((service) => (
+                {listed.items.map((service) => (
                   <ServiceResultCard
                     key={service.id}
                     service={service}
@@ -561,6 +570,18 @@ export function MapDashboard() {
                     setHoveredId={setHoveredId}
                   />
                 ))}
+              </div>
+            ) : null}
+            {!loading && !fatalError && listed.hasMore ? (
+              <div className="px-4 py-3 sm:px-5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full rounded-sm"
+                  onClick={() => setLoadedPages((pages) => pages + 1)}
+                >
+                  {t("loadMore")}
+                </Button>
               </div>
             ) : null}
           </div>

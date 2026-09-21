@@ -388,6 +388,27 @@ test("a confirmed language list is never overwritten by the roster baseline", ()
   assert.ok(!("languages_confirmed" in payload));
 });
 
+test("website-confirmed language evidence is never overwritten by a roster update", () => {
+  const row = toOrganizationRow(record(), undefined);
+  const { payload, preserved } = buildUpdatePayload(
+    row,
+    existing({
+      languages: ["English", "Spanish"],
+      languages_evidence: [
+        {
+          language: "Spanish",
+          sourceUrl: "https://example.org/",
+          snippet: "Languages: Spanish",
+          kind: "language-list",
+        },
+      ],
+    }),
+  );
+
+  assert.ok(preserved.includes("languages_evidence"));
+  assert.ok(!("languages_evidence" in payload));
+});
+
 test("repeat runs against stored rows produce no inserts", () => {
   const records = [
     record(),

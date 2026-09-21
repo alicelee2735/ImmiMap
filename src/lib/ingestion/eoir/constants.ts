@@ -83,6 +83,9 @@ export const EOIR_KEY_PREFIX = "doj-ra";
 /** Prefix for pro bono list keys. Distinct from the R&A roster scheme. */
 export const EOIR_PRO_BONO_KEY_PREFIX = "doj-probono";
 
+/** IRS Exempt Organizations BMF EIN, stored as the primary legacy_id on net-new rows. */
+export const IRS_EO_KEY_PREFIX = "irs-eo";
+
 /**
  * Recognition under 8 C.F.R. Part 1292 means representing clients before
  * U.S. immigration courts, which operate in English — a safe baseline
@@ -104,6 +107,15 @@ export function isEoirProBonoLegacyId(
   );
 }
 
+export function isIrsEoLegacyId(
+  legacyId: string | null | undefined,
+): boolean {
+  return (
+    typeof legacyId === "string" &&
+    legacyId.startsWith(`${IRS_EO_KEY_PREFIX}-`)
+  );
+}
+
 /**
  * Coarse ingest family for duplicate audits. `svc-*` seed keys and keyless
  * hand-entered rows are both curated — comparing their display labels as if
@@ -113,13 +125,15 @@ export function isEoirProBonoLegacyId(
 export type OrganizationSourceFamily =
   | "curated"
   | "eoir_roster"
-  | "eoir_probono";
+  | "eoir_probono"
+  | "irs_eo";
 
 export function organizationSourceFamily(
   legacyId: string | null | undefined,
 ): OrganizationSourceFamily {
   if (isEoirLegacyId(legacyId)) return "eoir_roster";
   if (isEoirProBonoLegacyId(legacyId)) return "eoir_probono";
+  if (isIrsEoLegacyId(legacyId)) return "irs_eo";
   return "curated";
 }
 
@@ -130,6 +144,7 @@ export function organizationSourceLabel(
   if (!legacyId) return "curated (keyless)";
   if (isEoirLegacyId(legacyId)) return "eoir_organizations";
   if (isEoirProBonoLegacyId(legacyId)) return "eoir_probono";
+  if (isIrsEoLegacyId(legacyId)) return "irs_eo";
   if (legacyId.startsWith("svc-")) return "curated (svc- seed)";
   return `curated (${legacyId.split("-")[0]}- seed)`;
 }

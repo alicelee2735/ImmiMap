@@ -27,6 +27,11 @@ test("EOIR roster and pro bono keys are not curated", () => {
   );
 });
 
+test("IRS EO BMF keys are not curated and are not EOIR", () => {
+  assert.equal(organizationSourceFamily("irs-eo-473515841"), "irs_eo");
+  assert.equal(organizationSourceLabel("irs-eo-473515841"), "irs_eo");
+});
+
 test("display labels still distinguish keyless from svc-seed", () => {
   assert.equal(organizationSourceLabel(null), "curated (keyless)");
   assert.equal(

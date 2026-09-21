@@ -88,7 +88,11 @@ export type ImmigrationService = {
   address: string;
   latitude: number;
   longitude: number;
-  pricing: PricingLabel;
+  /**
+   * Confirmed fee tier. Omitted/undefined means pricing has not been
+   * confirmed — never coerce that to Low-cost.
+   */
+  pricing?: PricingLabel;
   services_offered: ServiceOffering[];
   thumbnail_image_url: string;
   website?: string;
@@ -108,6 +112,22 @@ export type ImmigrationService = {
    * treated as confirmed (true) for older, pre-migration rows.
    */
   languagesConfirmed?: boolean;
+  /**
+   * Trail for website-confirmed non-English languages. Omitted on the slim
+   * map index; present on GET /api/organizations/[id]. English is never stored
+   * here even when a switcher or hreflang list mentions it.
+   */
+  languagesEvidence?: Array<{
+    language: string;
+    sourceUrl: string;
+    snippet: string;
+    kind:
+      | "offering-phrase"
+      | "language-list"
+      | "switcher"
+      | "staff-bio"
+      | "hreflang-switcher";
+  }>;
   /** Catchment note shown if user falls outside service region. */
   catchmentNote?: string;
   /**
@@ -120,6 +140,11 @@ export type ImmigrationService = {
    * Drives the plain-text recognition note instead of synthetic service tags.
    */
   eoirSourced?: boolean;
+  /**
+   * How `website` relates to this listing. Set only by website discovery.
+   * Omitted on the slim map index; present on GET /api/organizations/[id].
+   */
+  websiteScope?: "local" | "parent" | null;
 };
 
 export type UscisProcessingRow = {

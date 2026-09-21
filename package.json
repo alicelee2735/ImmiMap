@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test src/stores/map-filters.reset.test.mjs && npx tsx --test src/stores/map-filters.service-types.test.ts src/lib/map-filter-fit.test.ts src/lib/cluster-declutter.test.ts src/lib/ingestion/eoir/*.test.ts",
+    "test": "node --test src/stores/map-filters.reset.test.mjs && npx tsx --test src/stores/map-filters.service-types.test.ts src/lib/map-filter-fit.test.ts src/lib/cluster-declutter.test.ts src/lib/map-results-page.test.ts src/lib/organization-mappers.test.ts src/lib/language-evidence.test.ts src/lib/api-cache.test.ts src/lib/ingestion/website-discovery.test.ts src/lib/ingestion/eoir/*.test.ts",
     "db:seed": "node scripts/seed-organizations.mjs",
     "db:ingest-real": "npx tsx scripts/ingest_real_providers.ts",
     "db:sync-eoir": "npx tsx scripts/sync-eoir-organizations.ts",
@@ -16,6 +16,7 @@
     "db:generate-expansion": "npx tsx scripts/export-catalog-fallback.ts",
     "db:check-links": "node scripts/check-organization-links.mjs",
     "db:verify-orgs": "node scripts/verify-organizations.mjs",
+    "db:discover-websites": "npx tsx scripts/discover-organization-websites.ts",
     "setup": "node scripts/setup.mjs"
   },
   "dependencies": {
@@ -43,6 +44,7 @@
     "react-leaflet-cluster": "^4.1.3",
     "shadcn": "^4.1.2",
     "stripe": "^22.1.1",
+    "swr": "^2.5.1",
     "tailwind-merge": "^3.5.0",
     "tw-animate-css": "^1.4.0",
     "ws": "^8.21.0",

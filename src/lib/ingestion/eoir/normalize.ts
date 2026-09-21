@@ -55,6 +55,11 @@ export type OrganizationUpsert = {
    * buildUpdatePayload), and never sets it true either.
    */
   languages_confirmed: false;
+  /**
+   * Website-confirmed trail. Roster never authors this; an update must not
+   * clobber a populated value (see CURATED_COLUMNS).
+   */
+  languages_evidence?: unknown[] | null;
   website_url?: string;
   catchment_note?: string;
   /**

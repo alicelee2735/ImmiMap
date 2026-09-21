@@ -128,6 +128,30 @@ create index if not exists organizations_is_website_active_idx
   on organizations (is_website_active)
   where website_url is not null;
 
+-- Discovery-pass classification of website_url. No default — existing URLs
+-- stay null (unclassified) until the discovery writer sets local or parent.
+alter table organizations
+  add column if not exists website_scope text
+    check (website_scope in ('local', 'parent'));
+
+comment on column organizations.website_scope is
+  'How website_url relates to this listing. local = this office/org''s own site; parent = national/HQ/umbrella site. Null means unclassified, including every URL that predates website discovery. Only the discovery pass writes an explicit value.';
+
+-- Website-confirmed language trail. Null until a verification pass writes it.
+-- English from switchers / hreflang / lists / weak LEP copy is not stored.
+alter table organizations
+  add column if not exists languages_evidence jsonb;
+
+alter table organizations
+  drop constraint if exists organizations_languages_evidence_is_array;
+
+alter table organizations
+  add constraint organizations_languages_evidence_is_array
+  check (languages_evidence is null or jsonb_typeof(languages_evidence) = 'array');
+
+comment on column organizations.languages_evidence is
+  'Confirmed-language trail: [{language, sourceUrl, snippet, kind}]. Non-English only. Null means no website-confirmed languages yet. English from switchers, hreflang, lists, or weak LEP copy is not stored.';
+
 -- Phone numbers are no longer shown or collected
 alter table organizations drop column if exists phone;
 

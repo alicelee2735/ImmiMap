@@ -120,10 +120,19 @@
     "intakeStatus": "LIMITED",
     "languages": [
       "English",
+      "Cantonese",
       "Mandarin",
-      "Cantonese"
+      "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://www.esperanza-la.org/",
+        "snippet": "hreflang switcher (en-us, es-es)",
+        "kind": "hreflang-switcher"
+      }
+    ],
     "catchmentNote": "Priority for residents of Los Angeles County."
   },
   {
@@ -151,10 +160,25 @@
     "intakeStatus": "OPEN",
     "languages": [
       "English",
-      "Spanish",
-      "Haitian Creole"
+      "Arabic",
+      "Haitian Creole",
+      "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Arabic",
+        "sourceUrl": "https://www.immdef.org/",
+        "snippet": "hreflang switcher (ar-ae, en-us, es-mx)",
+        "kind": "hreflang-switcher"
+      },
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://www.immdef.org/",
+        "snippet": "hreflang switcher (ar-ae, en-us, es-mx)",
+        "kind": "hreflang-switcher"
+      }
+    ],
     "catchmentNote": "California statewide with focus on Southern California."
   },
   {
@@ -183,10 +207,46 @@
     "intakeStatus": "WAITLISTED",
     "languages": [
       "English",
+      "Cantonese",
       "Korean",
-      "Spanish"
+      "Mandarin",
+      "Spanish",
+      "Tagalog",
+      "Vietnamese"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Cantonese",
+        "sourceUrl": "https://lafla.org/",
+        "snippet": "…Language English & Español (Spanish) 800-399-4529 國語/廣東話 (Mandarin / cantonese) 323-801-7912 Filipino 323-801-7979 ភាសាខ្មែរ (Khmer/Cambodian) 562-3…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Mandarin",
+        "sourceUrl": "https://lafla.org/",
+        "snippet": "…elp in Your Language English & Español (Spanish) 800-399-4529 國語/廣東話 (Mandarin / cantonese) 323-801-7912 Filipino 323-801-7979 ភាសាខ្មែរ (Khmer/Camb…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://lafla.org/",
+        "snippet": "…2027 for homeowners and October 9, 2026 for renters. Learn more here. ESPAÑOL 한국어 简体中文 繁體中文 日本語 ភាសាខ្មែរ TIẾNG VIỆT ไทย فارسی دری Русский FILIPINO…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Tagalog",
+        "sourceUrl": "https://lafla.org/",
+        "snippet": "…ESPAÑOL 한국어 简体中文 繁體中文 日本語 ភាសាខ្មែរ TIẾNG VIỆT ไทย فارسی دری Русский FILIPINO العربية Հայերեն বাঙলা ASL ESPAÑOL 한국어 简体中文 繁體中文 日本語 ភាសាខ្មែរ TIẾNG V…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Vietnamese",
+        "sourceUrl": "https://lafla.org/",
+        "snippet": "…026 for renters. Learn more here. ESPAÑOL 한국어 简体中文 繁體中文 日本語 ភាសាខ្មែរ TIẾNG VIỆT ไทย فارسی دری Русский FILIPINO العربية Հայերեն বাঙলা ASL ESPAÑOL 한국어…",
+        "kind": "language-list"
+      }
+    ],
     "catchmentNote": "Los Angeles County residents meeting income guidelines."
   },
   {
@@ -214,10 +274,25 @@
     "intakeStatus": "WAITLISTED",
     "languages": [
       "English",
-      "Spanish",
-      "Portuguese"
+      "Korean",
+      "Portuguese",
+      "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Korean",
+        "sourceUrl": "https://publiccounsel.org/",
+        "snippet": "hreflang switcher (en, es, ko)",
+        "kind": "hreflang-switcher"
+      },
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://publiccounsel.org/",
+        "snippet": "…or Public Counsel and for the clients that we serve.&#8221; × English Español 한국어",
+        "kind": "language-list"
+      }
+    ],
     "catchmentNote": "Serves clients across Southern California."
   },
   {
@@ -337,9 +412,24 @@
     "intakeStatus": "WAITLISTED",
     "languages": [
       "English",
-      "Spanish"
+      "Spanish",
+      "Vietnamese"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://lafcc.org/",
+        "snippet": "…goals to excel in life. LEARN WITH US We Speak Your Language English, Spanish, Hmong, and Vietnamese. Talk To Us Let's Keep Our Communities Healthy…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Vietnamese",
+        "sourceUrl": "https://lafcc.org/",
+        "snippet": "…fe. LEARN WITH US We Speak Your Language English, Spanish, Hmong, and Vietnamese. Talk To Us Let's Keep Our Communities Healthy! California’s COVID st…",
+        "kind": "language-list"
+      }
+    ],
     "catchmentNote": "At-risk youth and families in Sacramento County."
   },
   {
@@ -370,6 +460,14 @@
       "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://www.clementejimenez.com/",
+        "snippet": "…y criminal defense practice to formally include immigration advocacy. Hablamos Español Lo mas importante es poder comunicarse directamente con su ab…",
+        "kind": "offering-phrase"
+      }
+    ],
     "catchmentNote": "Immigrants facing criminal and immigration proceedings in Sacramento."
   },
   {
@@ -397,9 +495,88 @@
     "intakeStatus": "WAITLISTED",
     "languages": [
       "English",
+      "Arabic",
+      "Bengali",
+      "Burmese",
+      "Cantonese",
+      "Farsi",
+      "French",
+      "Mandarin",
+      "Portuguese",
+      "Somali",
+      "Spanish",
+      "Tagalog",
       "Vietnamese"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Arabic",
+        "sourceUrl": "https://www.ailalawyer.com/",
+        "snippet": "…Waivers Lawyer Speaks English Spanish Afrikaans Akan Albanian Amharic Arabic Armenian Asante Assyrian Azerbaijani Azeri Bahasa Bambara Basare Bela…",
+        "kind": "staff-bio"
+      },
+      {
+        "language": "Bengali",
+        "sourceUrl": "https://www.ailalawyer.com/",
+        "snippet": "…an Asante Assyrian Azerbaijani Azeri Bahasa Bambara Basare Belarusian Bengali Berber Bicol Bisaya Bosnian Bulgarian Burmese Byelorussian Cambodian…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Burmese",
+        "sourceUrl": "https://www.ailalawyer.com/",
+        "snippet": "…mbara Basare Belarusian Bengali Berber Bicol Bisaya Bosnian Bulgarian Burmese Byelorussian Cambodian Catalan Cebuano Chaldean Chao Chow Chewa Chine…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Cantonese",
+        "sourceUrl": "https://www.ailalawyer.com/",
+        "snippet": "…n Cambodian Catalan Cebuano Chaldean Chao Chow Chewa Chinese Chinese (Cantonese) Chinese (Mandarin) Chinyanta Circassian Creole Croatian Czech Danish…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Farsi",
+        "sourceUrl": "https://www.ailalawyer.com/",
+        "snippet": "…assian Creole Croatian Czech Danish Dari Dutch Edo Estonian Ewe Fanti Farsi Filipino Finnish French Fujian Fijian Fuzhounese Ga Galician Georgian…",
+        "kind": "language-list"
+      },
+      {
+        "language": "French",
+        "sourceUrl": "https://www.ailalawyer.com/",
+        "snippet": "…Czech Danish Dari Dutch Edo Estonian Ewe Fanti Farsi Filipino Finnish French Fujian Fijian Fuzhounese Ga Galician Georgian German Greek Guarani Gu…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Mandarin",
+        "sourceUrl": "https://www.ailalawyer.com/",
+        "snippet": "…Cebuano Chaldean Chao Chow Chewa Chinese Chinese (Cantonese) Chinese (Mandarin) Chinyanta Circassian Creole Croatian Czech Danish Dari Dutch Edo Est…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Portuguese",
+        "sourceUrl": "https://www.ailalawyer.com/",
+        "snippet": "…n Norwegian Okihawah Oriya Oromo Pangasinan Papiamentu Persian Polish Portuguese Pashto Punjabi Romanian Runyankore Runyarwanda Russian Samoan Serbian…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Somali",
+        "sourceUrl": "https://www.ailalawyer.com/",
+        "snippet": "…Samoan Serbian Serbo-Croatian Shanghai Sign Language Sinhalese Slovak Somali Swahili Swedish Tagalog Taiwanese Tajik Tamil Telugu Temne Thai Tibet…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://www.ailalawyer.com/",
+        "snippet": "…Visitors TN/USMCA Ukrainian Assistance Waivers Lawyer Speaks English Spanish Afrikaans Akan Albanian Amharic Arabic Armenian Asante Assyrian Azerb…",
+        "kind": "staff-bio"
+      },
+      {
+        "language": "Tagalog",
+        "sourceUrl": "https://www.ailalawyer.com/",
+        "snippet": "…Creole Croatian Czech Danish Dari Dutch Edo Estonian Ewe Fanti Farsi Filipino Finnish French Fujian Fijian Fuzhounese Ga Galician Georgian German G…",
+        "kind": "language-list"
+      }
+    ],
     "catchmentNote": "Immigrant individuals and families in the Sacramento area."
   },
   {
@@ -426,10 +603,38 @@
     "intakeStatus": "LIMITED",
     "languages": [
       "English",
+      "Mandarin",
+      "Russian",
       "Spanish",
-      "Russian"
+      "Vietnamese"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Mandarin",
+        "sourceUrl": "https://lsnc.net/office/sacramento",
+        "snippet": "hreflang switcher (en, es, ru, vi, zh-hans)",
+        "kind": "hreflang-switcher"
+      },
+      {
+        "language": "Russian",
+        "sourceUrl": "https://lsnc.net/office/sacramento",
+        "snippet": "hreflang switcher (en, es, ru, vi, zh-hans)",
+        "kind": "hreflang-switcher"
+      },
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://lsnc.net/office/sacramento",
+        "snippet": "hreflang switcher (en, es, ru, vi, zh-hans)",
+        "kind": "hreflang-switcher"
+      },
+      {
+        "language": "Vietnamese",
+        "sourceUrl": "https://lsnc.net/office/sacramento",
+        "snippet": "…t We Do Self Help Contact Us English Espa&ntilde;ol 简体中文 繁體中文 Русский Tiếng Việt ภาษาไทย Search Main navigation Who We Are What We Do Self Help Contac…",
+        "kind": "language-list"
+      }
+    ],
     "catchmentNote": "Low-income Sacramento County residents below federal poverty guidelines."
   },
   {
@@ -461,6 +666,14 @@
       "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://martinez-law-group.com/",
+        "snippet": "…ve to offer. We work together creatively to help our clients succeed. Se Habla Español about us MARTINEZ LAW GROUP P.C. We Are Committed to Excellen…",
+        "kind": "offering-phrase"
+      }
+    ],
     "catchmentNote": "Immigrant and Latino communities in the Sacramento area."
   },
   {
@@ -489,9 +702,24 @@
     "intakeStatus": "LIMITED",
     "languages": [
       "English",
+      "French",
       "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "French",
+        "sourceUrl": "https://www.pacific.edu/academics/undergraduate-programs",
+        "snippet": "…Languages and Literature program offers majors and minors in Spanish, French, Chinese, and Japanese, and additional language courses in German. Do…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://www.pacific.edu/academics/undergraduate-programs",
+        "snippet": "…e Modern Languages and Literature program offers majors and minors in Spanish, French, Chinese, and Japanese, and additional language courses in Ge…",
+        "kind": "language-list"
+      }
+    ],
     "catchmentNote": "Low-income non-citizens residing in Sacramento County."
   },
   {
@@ -522,6 +750,14 @@
       "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://www.mendozaimmigration.com/",
+        "snippet": "hreflang switcher (en, es)",
+        "kind": "hreflang-switcher"
+      }
+    ],
     "catchmentNote": "Immigrant families throughout Sacramento County and Northern California."
   },
   {
@@ -733,11 +969,39 @@
     "intakeStatus": "OPEN",
     "languages": [
       "English",
-      "Spanish",
+      "Cantonese",
       "Mandarin",
-      "Russian"
+      "Portuguese",
+      "Russian",
+      "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Cantonese",
+        "sourceUrl": "https://www.wilneroreilly.com/contact-us/",
+        "snippet": "…a call today. Our multilingual team speaks Spanish, Mandarin Chinese, Cantonese Chinese, and Portuguese, with translators available for other languag…",
+        "kind": "staff-bio"
+      },
+      {
+        "language": "Mandarin",
+        "sourceUrl": "https://www.wilneroreilly.com/contact-us/",
+        "snippet": "…Give our lawyers a call today. Our multilingual team speaks Spanish, Mandarin Chinese, Cantonese Chinese, and Portuguese, with translators availabl…",
+        "kind": "staff-bio"
+      },
+      {
+        "language": "Portuguese",
+        "sourceUrl": "https://www.wilneroreilly.com/contact-us/",
+        "snippet": "…lingual team speaks Spanish, Mandarin Chinese, Cantonese Chinese, and Portuguese, with translators available for other languages upon request. For ass…",
+        "kind": "staff-bio"
+      },
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://www.wilneroreilly.com/contact-us/",
+        "snippet": "…tion law. Give our lawyers a call today. Our multilingual team speaks Spanish, Mandarin Chinese, Cantonese Chinese, and Portuguese, with translator…",
+        "kind": "staff-bio"
+      }
+    ],
     "catchmentNote": "Individuals and employers in Sacramento and throughout California."
   },
   {
@@ -765,10 +1029,45 @@
     "intakeStatus": "OPEN",
     "languages": [
       "English",
+      "Arabic",
+      "Farsi",
+      "Russian",
       "Spanish",
-      "Farsi"
+      "Vietnamese"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Arabic",
+        "sourceUrl": "https://www.yasrebilaw.com/",
+        "snippet": "…ages to ensure you fully understand every step: English Spanish Farsi Arabic Chinese Vietnamese Russian Client Success Stories What Our Clients Sa…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Farsi",
+        "sourceUrl": "https://www.yasrebilaw.com/",
+        "snippet": "…languages to ensure you fully understand every step: English Spanish Farsi Arabic Chinese Vietnamese Russian Client Success Stories What Our Cli…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Russian",
+        "sourceUrl": "https://www.yasrebilaw.com/",
+        "snippet": "…nderstand every step: English Spanish Farsi Arabic Chinese Vietnamese Russian Client Success Stories What Our Clients Say Hear from real families w…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://www.yasrebilaw.com/",
+        "snippet": "…ces in 7 languages to ensure you fully understand every step: English Spanish Farsi Arabic Chinese Vietnamese Russian Client Success Stories What O…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Vietnamese",
+        "sourceUrl": "https://www.yasrebilaw.com/",
+        "snippet": "…you fully understand every step: English Spanish Farsi Arabic Chinese Vietnamese Russian Client Success Stories What Our Clients Say Hear from real fa…",
+        "kind": "language-list"
+      }
+    ],
     "catchmentNote": "Immigrants throughout Sacramento and California."
   },
   {
@@ -1074,10 +1373,24 @@
     "intakeStatus": "WAITLISTED",
     "languages": [
       "English",
-      "Spanish",
-      "Haitian Creole"
+      "Haitian Creole",
+      "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Haitian Creole",
+        "sourceUrl": "https://cflcc.org/",
+        "snippet": "…guage='Spanish' label='Español' image='no' text='yes'] [glt language='Haitian Creole' label='Haitian Creole' image='no' text='yes'] Privacy Policy Partner…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://cflcc.org/behavioral-health-services/",
+        "snippet": "…needs of a wide variety of clients. Staff is bilingual in English and Spanish. We accept a variety of insurance including Medicare. In some cases,…",
+        "kind": "staff-bio"
+      }
+    ],
     "catchmentNote": "Orange, Osceola, and Seminole counties."
   },
   {
@@ -1228,10 +1541,32 @@
     "intakeStatus": "OPEN",
     "languages": [
       "English",
-      "Vietnamese",
-      "Spanish"
+      "Arabic",
+      "Korean",
+      "Spanish",
+      "Vietnamese"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Arabic",
+        "sourceUrl": "https://www.northeastnjlegalservices.org/",
+        "snippet": "hreflang switcher (ar-ae, en-us, es-mx, ko-kr)",
+        "kind": "hreflang-switcher"
+      },
+      {
+        "language": "Korean",
+        "sourceUrl": "https://www.northeastnjlegalservices.org/",
+        "snippet": "hreflang switcher (ar-ae, en-us, es-mx, ko-kr)",
+        "kind": "hreflang-switcher"
+      },
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://www.northeastnjlegalservices.org/",
+        "snippet": "hreflang switcher (ar-ae, en-us, es-mx, ko-kr)",
+        "kind": "hreflang-switcher"
+      }
+    ],
     "catchmentNote": "Northeast New Jersey."
   },
   {
@@ -1324,6 +1659,14 @@
       "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://www.lanfoundation.org/",
+        "snippet": "hreflang switcher (en-us, es-mx)",
+        "kind": "hreflang-switcher"
+      }
+    ],
     "catchmentNote": "Middlesex and surrounding counties."
   },
   {
@@ -1601,11 +1944,33 @@
     "intakeStatus": "WAITLISTED",
     "languages": [
       "English",
-      "Spanish",
       "Bengali",
-      "Mandarin"
+      "French",
+      "Haitian Creole",
+      "Mandarin",
+      "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "French",
+        "sourceUrl": "https://legalaidnyc.org/",
+        "snippet": "…Justice Choose a language for this website EN English English Español Français Kreyol ayisyen العربية বাংলা 简体中文 繁體中文 हिन्दी 한국어 नेपाली فارسی ਪੰਜਾਬੀ…",
+        "kind": "language-list"
+      },
+      {
+        "language": "Haitian Creole",
+        "sourceUrl": "https://legalaidnyc.org/",
+        "snippet": "…hoose a language for this website EN English English Español Français Kreyol ayisyen العربية বাংলা 简体中文 繁體中文 हिन्दी 한국어 नेपाली فارسی ਪੰਜਾਬੀ Русский اردو […",
+        "kind": "language-list"
+      },
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://legalaidnyc.org/",
+        "snippet": "…ate for Justice Choose a language for this website EN English English Español Français Kreyol ayisyen العربية বাংলা 简体中文 繁體中文 हिन्दी 한국어 नेपाली فار…",
+        "kind": "language-list"
+      }
+    ],
     "catchmentNote": "Income-eligible New York City residents only."
   },
   {
@@ -1730,10 +2095,19 @@
     "intakeStatus": "LIMITED",
     "languages": [
       "English",
+      "Cantonese",
       "Mandarin",
-      "Cantonese"
+      "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://www.equaljusticecenter.org/",
+        "snippet": "…: (800) 853-4028 Get more information about EJC legal help English En Español &copy; 2026 Equal Justice Center Austin 314 E Highland Mall Blvd Suit…",
+        "kind": "language-list"
+      }
+    ],
     "catchmentNote": "Texas statewide with Austin headquarters."
   },
   {
@@ -1795,6 +2169,14 @@
       "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://workersdefense.org/en/",
+        "snippet": "hreflang switcher (en, en-us, es, es-mx)",
+        "kind": "hreflang-switcher"
+      }
+    ],
     "catchmentNote": "Austin, Dallas, and Houston areas."
   },
   {
@@ -1855,11 +2237,32 @@
     "intakeStatus": "OPEN",
     "languages": [
       "English",
-      "Spanish",
       "Arabic",
+      "Farsi",
+      "Spanish",
       "Vietnamese"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Farsi",
+        "sourceUrl": "https://bakerripley.org/",
+        "snippet": "hreflang switcher (en, es, fa, vi)",
+        "kind": "hreflang-switcher"
+      },
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://bakerripley.org/",
+        "snippet": "hreflang switcher (en, es, fa, vi)",
+        "kind": "hreflang-switcher"
+      },
+      {
+        "language": "Vietnamese",
+        "sourceUrl": "https://bakerripley.org/",
+        "snippet": "hreflang switcher (en, es, fa, vi)",
+        "kind": "hreflang-switcher"
+      }
+    ],
     "catchmentNote": "Services available across multiple Houston neighborhood centers."
   },
   {

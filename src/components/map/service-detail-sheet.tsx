@@ -4,33 +4,87 @@ import { useEffect } from "react";
 import { ExternalLink, Globe, Info, MapPin, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { PricingBadge } from "@/components/map/pricing-badge";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { VerifiedBadge } from "@/components/verification/verified-badge";
+import { useOrganizationDetail } from "@/hooks/use-organization-detail";
+import { splitLanguagesForDisplay } from "@/lib/language-evidence";
 import { cn } from "@/lib/utils";
 import { useMapFiltersStore } from "@/stores/map-filters";
-import type {
-  ImmigrationService,
-  IntakeStatus,
-  PricingLabel,
-} from "@/types/immimap";
+import type { ImmigrationService, IntakeStatus } from "@/types/immimap";
 
 /** Shared Google Form used for listing corrections (same as About page). */
 const DATA_CORRECTION_FORM_URL = "https://forms.gle/SZryGqpSC6N3RV6F6";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Languages (confirmed vs assumed) ───────────────────────────────────────────
 
-function pricingBadgeClassName() {
-  return "shrink-0 rounded-sm border border-route-blue/30 bg-paper font-medium uppercase tracking-wide text-ink-navy";
+function LanguagesSection({ service }: { service: ImmigrationService }) {
+  const t = useTranslations("ServiceDetail");
+  const { confirmed, assumed } = splitLanguagesForDisplay(
+    service.languages,
+    service.languagesConfirmed,
+    service.languagesEvidence,
+  );
+
+  if (confirmed.length === 0 && assumed.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {confirmed.length > 0 ? (
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-widest text-slate-400">
+            {t("languagesLabel")}
+          </p>
+          <div className="flex items-start gap-2">
+            <Globe
+              className="mt-0.5 h-4 w-4 shrink-0 text-primary"
+              aria-hidden
+            />
+            <p className="leading-relaxed text-slate-700">
+              {confirmed.join(" · ")}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {assumed.length > 0 ? (
+        <div
+          className="rounded-md border border-dashed border-amber-300 bg-amber-50/70 px-3 py-2.5"
+          role="status"
+        >
+          <p className="mb-2 text-xs font-medium uppercase tracking-widest text-amber-700">
+            {t("languagesAssumedLabel")}
+          </p>
+          <div className="flex items-start gap-2">
+            <Globe
+              className="mt-0.5 h-4 w-4 shrink-0 text-amber-600"
+              aria-hidden
+            />
+            <p className="leading-relaxed text-amber-900">
+              {t("languagesAssumedValue", {
+                languages: assumed.join(" · "),
+              })}
+            </p>
+          </div>
+          <p className="mt-2 text-xs leading-snug text-amber-700/80">
+            {t("languagesAssumedHint")}{" "}
+            <a
+              href={DATA_CORRECTION_FORM_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline decoration-amber-400 underline-offset-2 transition-colors hover:text-amber-900"
+            >
+              {t("reportCorrection")}
+            </a>
+          </p>
+        </div>
+      ) : null}
+    </>
+  );
 }
-
-const PRICING_LABEL_TO_KEY: Record<PricingLabel, "pro_bono" | "low_cost" | "paid"> = {
-  "Pro bono": "pro_bono",
-  "Low-cost": "low_cost",
-  Paid: "paid",
-};
-
-// ── Intake status indicator ────────────────────────────────────────────────────
 
 function IntakeStatusBlock({ status }: { status: IntakeStatus }) {
   const t = useTranslations("ServiceDetail");
@@ -73,12 +127,12 @@ type Props = {
 
 export function ServiceDetailSheet({ services }: Props) {
   const t = useTranslations("ServiceDetail");
-  const tPrice = useTranslations("Pricing");
   const selectedServiceId = useMapFiltersStore((s) => s.selectedServiceId);
   const selectService = useMapFiltersStore((s) => s.selectService);
 
-  const service = services.find((s) => s.id === selectedServiceId) ?? null;
-  const open = Boolean(service);
+  const slim = services.find((s) => s.id === selectedServiceId) ?? null;
+  const { service, loading: detailLoading } = useOrganizationDetail(slim);
+  const open = Boolean(slim);
 
   useEffect(() => {
     if (!open) return;
@@ -166,13 +220,21 @@ export function ServiceDetailSheet({ services }: Props) {
             <h2 className="pr-8 text-2xl font-semibold leading-tight tracking-tight text-gray-950">
               {service.name}
             </h2>
-            <Badge
-              variant="outline"
-              className={pricingBadgeClassName()}
-            >
-              {tPrice(PRICING_LABEL_TO_KEY[service.pricing])}
-            </Badge>
+            {service.pricing ? <PricingBadge pricing={service.pricing} /> : null}
           </div>
+          {service.pricing ? null : (
+            <div
+              className="rounded-md border border-dashed border-amber-300 bg-amber-50/70 px-3 py-2.5"
+              role="status"
+            >
+              <p className="mb-1 text-xs font-medium uppercase tracking-widest text-amber-700">
+                {t("pricingUnconfirmedLabel")}
+              </p>
+              <p className="leading-relaxed text-amber-900">
+                {t("pricingUnconfirmedHint")}
+              </p>
+            </div>
+          )}
           <VerifiedBadge type={service.type} verified={service.verified} />
           {service.intakeStatus ? (
             <IntakeStatusBlock status={service.intakeStatus} />
@@ -201,58 +263,14 @@ export function ServiceDetailSheet({ services }: Props) {
           ) : null}
 
           <p className="text-base leading-relaxed text-slate-600">
-            {service.description ?? t("noDescription")}
+            {detailLoading ? (
+              <span className="block h-16 animate-pulse rounded bg-slate-100" />
+            ) : (
+              (service.description ?? t("noDescription"))
+            )}
           </p>
 
-          {service.languages && service.languages.length > 0 ? (
-            service.languagesConfirmed === false ? (
-              <div
-                className="rounded-md border border-dashed border-amber-300 bg-amber-50/70 px-3 py-2.5"
-                role="status"
-              >
-                <p className="mb-2 text-xs font-medium uppercase tracking-widest text-amber-700">
-                  {t("languagesAssumedLabel")}
-                </p>
-                <div className="flex items-start gap-2">
-                  <Globe
-                    className="mt-0.5 h-4 w-4 shrink-0 text-amber-600"
-                    aria-hidden
-                  />
-                  <p className="leading-relaxed text-amber-900">
-                    {t("languagesAssumedValue", {
-                      languages: service.languages.join(" · "),
-                    })}
-                  </p>
-                </div>
-                <p className="mt-2 text-xs leading-snug text-amber-700/80">
-                  {t("languagesAssumedHint")}{" "}
-                  <a
-                    href={DATA_CORRECTION_FORM_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline decoration-amber-400 underline-offset-2 transition-colors hover:text-amber-900"
-                  >
-                    {t("reportCorrection")}
-                  </a>
-                </p>
-              </div>
-            ) : (
-              <div>
-                <p className="mb-2 text-xs font-medium uppercase tracking-widest text-slate-400">
-                  {t("languagesLabel")}
-                </p>
-                <div className="flex items-start gap-2">
-                  <Globe
-                    className="mt-0.5 h-4 w-4 shrink-0 text-primary"
-                    aria-hidden
-                  />
-                  <p className="leading-relaxed text-slate-700">
-                    {service.languages.join(" · ")}
-                  </p>
-                </div>
-              </div>
-            )
-          ) : null}
+          <LanguagesSection service={service} />
 
           {service.eoirSourced ? (
             <p className="text-sm leading-relaxed text-slate-500">

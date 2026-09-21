@@ -149,12 +149,13 @@ export type ExistingRow = {
   pricing: string | null;
   intake_status: string | null;
   languages: string[] | null;
+  languages_evidence?: unknown[] | null;
 };
 
 const WRITE_CHUNK_SIZE = 200;
 
 const EXISTING_ROW_COLUMNS =
-  "id, legacy_id, name, city, state, address, lat, lng, description, pricing, intake_status, languages";
+  "id, legacy_id, name, city, state, address, lat, lng, description, pricing, intake_status, languages, languages_evidence";
 
 /**
  * Columns the roster has no authority over. EOIR publishes neither a price nor
@@ -174,6 +175,8 @@ const EXISTING_ROW_COLUMNS =
  * `languages` belongs here so the roster's English baseline only ever fills
  * an empty gap. It must never clobber a real, human-confirmed language list
  * (see the `languages_confirmed` handling below, which travels with it).
+ * `languages_evidence` is the same hold: a website-confirmed trail must not
+ * be wiped by a later roster PDF.
  *
  * `address` is the same fill-gap rule. A human-reviewed street (Centro's
  * E. 12th, HIAS Broadway, BDS Livingston, IIBA Second Street) must not be
@@ -190,6 +193,7 @@ const CURATED_COLUMNS = [
   "pricing",
   "intake_status",
   "languages",
+  "languages_evidence",
   "address",
 ] as const;
 

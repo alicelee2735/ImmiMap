@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DuplicateMatcher, brandIdentityTokens, namesIndicateSameOffice, parentheticalAcronyms, zipFromAddress, zipFromNaturalKey } from "./match";
+import { DuplicateMatcher, brandIdentityTokens, isParentBrandTokenShape, namesIndicateSameOffice, needsEinCrossVerification, parentheticalAcronyms, parentIdentifyingDfCap, zipFromAddress, zipFromNaturalKey } from "./match";
 import type { MatchCandidate } from "./match";
 
 /**
@@ -162,6 +162,212 @@ test("another office of the same organization is left alone", () => {
   });
 
   assert.equal(matches.length, 0);
+});
+
+test("the anywhere matcher finds a parent office in another city", () => {
+  const matches = matcherFor(
+    candidate({
+      name: "California Rural Legal Assistance Foundation",
+      city: "Sacramento",
+      zip: "95816",
+    }),
+  ).findMatchesAnywhere({
+    name: "California Rural Legal Assistance Foundation (CRLAF)",
+    city: "Fresno",
+    state: "CA",
+    zip: "93727",
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].candidate.city, "Sacramento");
+});
+
+test("the anywhere matcher does not treat diocesan Catholic Charities as one parent", () => {
+  const matches = new DuplicateMatcher(
+    [
+      ...CORPUS,
+      "Catholic Charities of Los Angeles, Inc.",
+      "Catholic Charities of the Archdiocese of Galveston-Houston",
+      "Catholic Charities of the Archdiocese of Chicago",
+      "Catholic Charities of the Diocese of Brooklyn",
+      "Catholic Charities of Santa Clara County",
+    ],
+    [
+      candidate({
+        id: "la",
+        name: "Catholic Charities of Los Angeles, Inc.",
+        city: "Los Angeles",
+        state: "CA",
+        zip: "90015",
+      }),
+    ],
+  ).findMatchesAnywhere({
+    name: "Catholic Charities of the Archdiocese of Galveston-Houston",
+    city: "Houston",
+    state: "TX",
+    zip: "77002",
+  });
+
+  assert.equal(matches.length, 0);
+});
+
+test("parent-identifying DF cap is the 90th percentile of unique-name frequencies, floored at 2", () => {
+  assert.equal(parentIdentifyingDfCap([]), 2);
+  assert.equal(parentIdentifyingDfCap([1, 1, 1, 1, 1, 1, 1, 1, 1, 12]), 2);
+  assert.equal(parentIdentifyingDfCap([1, 1, 1, 2, 2, 2, 3, 3, 5, 40]), 5);
+});
+
+test("the anywhere matcher ignores a short catalog name made of common vocabulary", () => {
+  const matches = matcherFor(
+    candidate({
+      name: "Immigration Services",
+      city: "San Antonio",
+      state: "TX",
+      zip: "78201",
+    }),
+  ).findMatchesAnywhere({
+    name: "African Social and Immigration Services",
+    city: "Dallas",
+    state: "TX",
+    zip: "75201",
+  });
+
+  assert.equal(matches.length, 0);
+});
+
+test("the anywhere matcher ignores a token that is common across unique names, not a stopword list", () => {
+  const matches = new DuplicateMatcher(
+    [
+      ...CORPUS,
+      "CASA, Inc.",
+      "Casa San Jose",
+      "Tu Casa Latina",
+      "Casa Familiar Inc.",
+      "La Casa De Amistad Inc.",
+    ],
+    [
+      candidate({
+        name: "CASA, Inc.",
+        city: "Rockville",
+        state: "MD",
+        zip: "20850",
+      }),
+    ],
+  ).findMatchesAnywhere({
+    name: "CASA DE PAZ",
+    city: "Aurora",
+    state: "CO",
+    zip: "80010",
+  });
+
+  assert.equal(matches.length, 0);
+});
+
+test("the anywhere matcher still matches a rare brand across cities", () => {
+  const matches = matcherFor(
+    candidate({
+      name: "Al Otro Lado, Inc.",
+      city: "Los Angeles",
+      state: "CA",
+      zip: "90012",
+    }),
+  ).findMatchesAnywhere({
+    name: "AL OTRO LADO INC",
+    city: "San Ysidro",
+    state: "CA",
+    zip: "92173",
+  });
+
+  assert.equal(matches.length, 1);
+  assert.ok(matches[0].matchedOn.includes("otro"));
+  assert.ok(matches[0].matchedOn.includes("lado"));
+  assert.ok(!matches[0].matchedOn.includes("al"), "two-letter fragments are not brand evidence");
+});
+
+test("parent brand tokens must be 4+ letters and not a state code or corporate suffix", () => {
+  assert.equal(isParentBrandTokenShape("nfp"), false);
+  assert.equal(isParentBrandTokenShape("mi"), false);
+  assert.equal(isParentBrandTokenShape("us"), false);
+  assert.equal(isParentBrandTokenShape("nc"), false);
+  assert.equal(isParentBrandTokenShape("al"), false);
+  assert.equal(isParentBrandTokenShape("corp"), false);
+  assert.equal(isParentBrandTokenShape("company"), false);
+  assert.equal(isParentBrandTokenShape("welcome"), true);
+  assert.equal(isParentBrandTokenShape("venezuela"), true);
+  assert.equal(isParentBrandTokenShape("otro"), true);
+});
+
+test("the anywhere matcher ignores a rare short fragment", () => {
+  const matches = matcherFor(
+    candidate({
+      name: "Alianza HispanoAmericana NFP, Inc.",
+      city: "West Dundee",
+      state: "IL",
+      zip: "60118",
+    }),
+  ).findMatchesAnywhere({
+    name: "A&A IMMIGRATION LEGAL CLINIC NFP",
+    city: "Chicago",
+    state: "IL",
+    zip: "60601",
+  });
+
+  assert.equal(matches.length, 0);
+});
+
+test("the anywhere matcher ignores a rare USPS state abbreviation", () => {
+  const matches = matcherFor(
+    candidate({
+      name: "Church World Service NC",
+      city: "Greensboro",
+      state: "NC",
+      zip: "27401",
+    }),
+  ).findMatchesAnywhere({
+    name: "IMMIGRATION STAR SUPPORT SERVICES I NC",
+    city: "Bronx",
+    state: "NY",
+    zip: "10451",
+  });
+
+  assert.equal(matches.length, 0);
+});
+
+test("the anywhere matcher ignores a rare corporate-suffix fragment", () => {
+  const matches = matcherFor(
+    candidate({
+      name: "Helping Hands Corp",
+      city: "Miami",
+      state: "FL",
+      zip: "33101",
+    }),
+  ).findMatchesAnywhere({
+    name: "Open Arms Corp",
+    city: "Dallas",
+    state: "TX",
+    zip: "75201",
+  });
+
+  assert.equal(matches.length, 0);
+});
+
+test("a rare 4+ letter token still counts as parent evidence even if it is a common English word", () => {
+  const matches = matcherFor(
+    candidate({
+      name: "Chicagoland Immigrant Welcome Network",
+      city: "Hammond",
+      state: "IN",
+      zip: "46320",
+    }),
+  ).findMatchesAnywhere({
+    name: "WELCOME",
+    city: "Rapid City",
+    state: "SD",
+    zip: "57701",
+  });
+
+  assert.equal(matches.length, 1);
+  assert.deepEqual(matches[0].matchedOn, ["welcome"]);
 });
 
 test("sharing only a common word is not a match", () => {
@@ -404,4 +610,83 @@ test("a ZIP-corroborated generic overlap is still not a match", () => {
     zip: "95814",
   });
   assert.equal(matches.length, 0);
+});
+
+test("a single rare ethnic token against a different legal name requires EIN cross-check", () => {
+  const matcher = new DuplicateMatcher(
+    [
+      ...CORPUS,
+      "National Korean American Service and Education Consortium",
+    ],
+    [
+      candidate({
+        name: "National Korean American Service and Education Consortium",
+        city: "Annandale",
+        state: "VA",
+        zip: "22003",
+      }),
+    ],
+  );
+  assert.equal(matcher.isParentIdentifyingToken("korean"), true);
+  assert.equal(
+    needsEinCrossVerification({
+      matchedOn: ["korean"],
+      via: "overlap",
+      incomingName: "KOREAN COMMUNITY SERVICE CENTER OF",
+      catalogName: "National Korean American Service and Education Consortium",
+      isParentIdentifyingToken: (token) => matcher.isParentIdentifyingToken(token),
+    }),
+    true,
+  );
+});
+
+test("the same legal-name token set does not require EIN cross-check on one rare token", () => {
+  const matcher = matcherFor(
+    candidate({
+      name: "ACCESS California Services",
+      city: "Anaheim",
+      state: "CA",
+      zip: "92801",
+    }),
+  );
+  assert.equal(
+    needsEinCrossVerification({
+      matchedOn: ["access"],
+      via: "overlap",
+      incomingName: "ACCESS CALIFORNIA SERVICES",
+      catalogName: "ACCESS California Services",
+      isParentIdentifyingToken: (token) => matcher.isParentIdentifyingToken(token),
+    }),
+    false,
+  );
+});
+
+test("an acronym-via hit is corroborating evidence, not a single-token EIN flag", () => {
+  const matcher = matcherFor(candidate({ name: "HIAS", city: "New York" }));
+  assert.equal(
+    needsEinCrossVerification({
+      matchedOn: ["hias"],
+      via: "acronym",
+      incomingName: "HIAS",
+      catalogName: "Hebrew Immigrant Aid Society (HIAS)",
+      isParentIdentifyingToken: (token) => matcher.isParentIdentifyingToken(token),
+    }),
+    false,
+  );
+});
+
+test("two rare tokens are corroborating evidence", () => {
+  const matcher = matcherFor(
+    candidate({ name: "Al Otro Lado, Inc.", city: "San Diego" }),
+  );
+  assert.equal(
+    needsEinCrossVerification({
+      matchedOn: ["otro", "lado"],
+      via: "overlap",
+      incomingName: "AL OTRO LADO OF SAN DIEGO",
+      catalogName: "Al Otro Lado, Inc.",
+      isParentIdentifyingToken: (token) => matcher.isParentIdentifyingToken(token),
+    }),
+    false,
+  );
 });

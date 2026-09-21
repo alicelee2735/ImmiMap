@@ -1,125 +1,73 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import useSWR from "swr";
 
-import type { OrganizationWithServices } from "@/types/database.types";
 import type { ImmigrationService } from "@/types/immimap";
-import { getCatalogServices } from "@/lib/catalog-data";
-import { canonicalizeWebsiteUrl, wasWebsiteHostCorrected } from "@/lib/website-corrections";
-import { isEoirLegacyId } from "@/lib/ingestion/eoir/constants";
 
-function jsonFallbackServices(): ImmigrationService[] {
+async function jsonFallbackServices(): Promise<ImmigrationService[]> {
+  const { getCatalogServices } = await import("@/lib/catalog-data");
   return getCatalogServices();
 }
 
-export function useOrganizations() {
-  const [organizations, setOrganizations] = useState<OrganizationWithServices[]>(
-    [],
-  );
-  const [services, setServices] = useState<ImmigrationService[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [usingFallback, setUsingFallback] = useState(false);
+type MapOrganizationsResult = {
+  services: ImmigrationService[];
+  usingFallback: boolean;
+  error: string | null;
+};
 
-  const fetchOrganizations = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+const MAP_ORGANIZATIONS_KEY = "/api/organizations/map";
 
-    try {
-      const response = await fetch("/api/organizations");
+async function fetchMapOrganizations(
+  url: string,
+): Promise<MapOrganizationsResult> {
+  try {
+    const response = await fetch(url);
 
-      if (response.status === 503) {
-        const fallback = jsonFallbackServices();
-        setUsingFallback(true);
-        setServices(fallback);
-        setOrganizations([]);
-        setError("Service temporarily unavailable.");
-        return;
-      }
-
-      if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        throw new Error(payload.error ?? "Failed to load organizations.");
-      }
-
-      const payload = (await response.json()) as {
-        organizations: OrganizationWithServices[];
+    if (response.status === 503) {
+      return {
+        services: await jsonFallbackServices(),
+        usingFallback: true,
+        error: "Service temporarily unavailable.",
       };
+    }
 
-      setUsingFallback(false);
-      setOrganizations(payload.organizations);
-      setServices(
-        payload.organizations
-          .map((org) => organizationWithServicesToImmigrationService(org))
-          .filter((service): service is ImmigrationService => service !== null),
-      );
-    } catch (fetchError) {
-      const fallback = jsonFallbackServices();
-      setUsingFallback(true);
-      setServices(fallback);
-      setOrganizations([]);
-      setError(
+    if (!response.ok) {
+      const payload = (await response.json()) as { error?: string };
+      throw new Error(payload.error ?? "Failed to load organizations.");
+    }
+
+    const payload = (await response.json()) as {
+      services: ImmigrationService[];
+    };
+
+    return {
+      services: payload.services,
+      usingFallback: false,
+      error: null,
+    };
+  } catch (fetchError) {
+    return {
+      services: await jsonFallbackServices(),
+      usingFallback: true,
+      error:
         fetchError instanceof Error
           ? fetchError.message
           : "Service temporarily unavailable.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchOrganizations();
-  }, [fetchOrganizations]);
-
-  return {
-    organizations,
-    services,
-    loading,
-    error,
-    usingFallback,
-    refresh: fetchOrganizations,
-  };
+    };
+  }
 }
 
-function organizationWithServicesToImmigrationService(
-  org: OrganizationWithServices,
-): ImmigrationService | null {
-  if (!org.address) {
-    return null;
-  }
-
-  const latitude = Number(org.lat);
-  const longitude = Number(org.lng);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return null;
-  }
+export function useOrganizations() {
+  const { data, isLoading } = useSWR(
+    MAP_ORGANIZATIONS_KEY,
+    fetchMapOrganizations,
+    { revalidateOnFocus: false },
+  );
 
   return {
-    id: org.legacy_id ?? org.id,
-    dbId: org.id,
-    name: org.name,
-    type: org.org_type ?? "NGO",
-    state: org.state as ImmigrationService["state"],
-    city: org.city,
-    address: org.address,
-    latitude,
-    longitude,
-    pricing: (org.pricing as ImmigrationService["pricing"]) ?? "Low-cost",
-    services_offered: org.services.map(
-      (service) => service.name,
-    ) as ImmigrationService["services_offered"],
-    thumbnail_image_url: org.thumbnail_image_url ?? "",
-    website: canonicalizeWebsiteUrl(org.website_url),
-    isWebsiteActive: wasWebsiteHostCorrected(org.website_url)
-      ? true
-      : (org.is_website_active ?? true),
-    description: org.description,
-    intakeStatus: org.intake_status,
-    languages: org.languages,
-    languagesConfirmed: org.languages_confirmed ?? true,
-    catchmentNote: org.catchment_note,
-    verified: org.verified === true,
-    eoirSourced: isEoirLegacyId(org.legacy_id),
+    services: data?.services ?? [],
+    loading: isLoading,
+    error: data?.error ?? null,
+    usingFallback: data?.usingFallback ?? false,
   };
 }
