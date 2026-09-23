@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test src/stores/map-filters.reset.test.mjs && npx tsx --test src/stores/map-filters.service-types.test.ts src/lib/map-filter-fit.test.ts src/lib/cluster-declutter.test.ts src/lib/map-results-page.test.ts src/lib/organization-mappers.test.ts src/lib/language-evidence.test.ts src/lib/api-cache.test.ts src/lib/ingestion/website-discovery.test.ts src/lib/ingestion/eoir/*.test.ts",
+    "test": "node --test src/stores/map-filters.reset.test.mjs && npx tsx --test src/stores/map-filters.service-types.test.ts src/lib/map-filter-fit.test.ts src/lib/cluster-declutter.test.ts src/lib/map-results-page.test.ts src/lib/organization-mappers.test.ts src/lib/language-evidence.test.ts src/lib/search-services.test.ts src/lib/api-cache.test.ts src/lib/ingestion/website-discovery.test.ts src/lib/ingestion/eoir/*.test.ts",
     "db:seed": "node scripts/seed-organizations.mjs",
     "db:ingest-real": "npx tsx scripts/ingest_real_providers.ts",
     "db:sync-eoir": "npx tsx scripts/sync-eoir-organizations.ts",

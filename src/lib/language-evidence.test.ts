@@ -86,6 +86,24 @@ test("splitLanguagesForDisplay treats legacy confirmed lists as fully confirmed"
   assert.deepEqual(split.assumed, []);
 });
 
+test("a Spanish evidence trail leaves other curated languages assumed", () => {
+  const split = splitLanguagesForDisplay(
+    ["English", "Arabic", "Spanish"],
+    true,
+    [
+      {
+        language: "Spanish",
+        sourceUrl: "https://centrolegal.org/get-involved/volunteers/",
+        snippet:
+          "Spanish interpreters are in primary demand, but interpreters in other languages are needed on a case-by-case basis as well.",
+        kind: "offering-phrase",
+      },
+    ],
+  );
+  assert.deepEqual(split.confirmed, ["Spanish"]);
+  assert.deepEqual(split.assumed, ["English", "Arabic"]);
+});
+
 test("mergeOrganizationLanguages keeps English first and does not invent it", () => {
   assert.deepEqual(mergeOrganizationLanguages(["English"], ["Spanish", "Arabic"]), [
     "English",

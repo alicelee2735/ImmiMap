@@ -5378,6 +5378,14 @@
       "Spanish"
     ],
     "languagesConfirmed": true,
+    "languagesEvidence": [
+      {
+        "language": "Spanish",
+        "sourceUrl": "https://centrolegal.org/get-involved/volunteers/",
+        "snippet": "Spanish interpreters are in primary demand, but interpreters in other languages are needed on a case-by-case basis as well.",
+        "kind": "offering-phrase"
+      }
+    ],
     "catchmentNote": "Primarily Alameda and Contra Costa counties."
   },
   {

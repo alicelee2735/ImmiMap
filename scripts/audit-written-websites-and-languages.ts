@@ -8,12 +8,14 @@
  *   npx tsx scripts/audit-written-websites-and-languages.ts --concurrency 8
  *   npx tsx scripts/audit-written-websites-and-languages.ts --resume
  *   npx tsx scripts/audit-written-websites-and-languages.ts --limit 20
+ *   npx tsx scripts/audit-written-websites-and-languages.ts --gap
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createIngestClient } from "../src/lib/ingestion/eoir/client";
+import { parseLanguageEvidence } from "../src/lib/language-evidence";
 import { looksLikeParkedPage } from "../src/lib/website-corrections";
 import {
   checkStoredUrlFormat,
@@ -33,6 +35,12 @@ const CHECKPOINT_PATH = join(REPORT_DIR, "website-language-audit-checkpoint.json
 const URL_REPORT_PATH = join(REPORT_DIR, "website-url-audit.json");
 const LANG_REPORT_PATH = join(REPORT_DIR, "language-verification.json");
 const SUMMARY_PATH = join(REPORT_DIR, "website-language-audit-summary.json");
+const GAP_CHECKPOINT_PATH = join(
+  REPORT_DIR,
+  "gap-language-audit-checkpoint.json",
+);
+const GAP_LANG_REPORT_PATH = join(REPORT_DIR, "gap-language-verification.json");
+const GAP_SUMMARY_PATH = join(REPORT_DIR, "gap-language-audit-summary.json");
 
 const USER_AGENT =
   "ImmimapLinkChecker/1.0 (+https://immimap.org; website availability audit)";
@@ -69,6 +77,7 @@ type OrgRow = {
   website_scope: "local" | "parent" | null;
   languages: string[] | null;
   languages_confirmed: boolean | null;
+  languages_evidence: unknown;
   is_website_active: boolean | null;
 };
 
@@ -139,11 +148,13 @@ function parseArgs(argv: string[]) {
     limit: null as number | null,
     resume: false,
     skipLanguage: false,
+    gap: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--resume") options.resume = true;
     else if (arg === "--skip-language") options.skipLanguage = true;
+    else if (arg === "--gap") options.gap = true;
     else if (arg === "--concurrency") {
       options.concurrency = Math.max(1, Number(argv[++i]) || 6);
     } else if (arg === "--timeout") {
@@ -185,7 +196,7 @@ async function fetchAllWebsiteOrgs(): Promise<OrgRow[]> {
     const { data, error } = await client
       .from("organizations")
       .select(
-        "id, name, city, state, website_url, website_scope, languages, languages_confirmed, is_website_active",
+        "id, name, city, state, website_url, website_scope, languages, languages_confirmed, languages_evidence, is_website_active",
       )
       .not("website_url", "is", null)
       .order("id")
@@ -360,8 +371,8 @@ function classifyLive(
   };
 }
 
-function loadCheckpoint(resume: boolean): Checkpoint {
-  if (!resume || !existsSync(CHECKPOINT_PATH)) {
+function loadCheckpoint(resume: boolean, path: string): Checkpoint {
+  if (!resume || !existsSync(path)) {
     return {
       startedAt: new Date().toISOString(),
       completedIds: [],
@@ -369,12 +380,12 @@ function loadCheckpoint(resume: boolean): Checkpoint {
       langRows: {},
     };
   }
-  return JSON.parse(readFileSync(CHECKPOINT_PATH, "utf8")) as Checkpoint;
+  return JSON.parse(readFileSync(path, "utf8")) as Checkpoint;
 }
 
-function saveCheckpoint(checkpoint: Checkpoint) {
+function saveCheckpoint(checkpoint: Checkpoint, path: string) {
   mkdirSync(REPORT_DIR, { recursive: true });
-  writeFileSync(CHECKPOINT_PATH, JSON.stringify(checkpoint));
+  writeFileSync(path, JSON.stringify(checkpoint));
 }
 
 function countBy<T extends string>(items: T[]): Record<string, number> {
@@ -390,7 +401,14 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   mkdirSync(REPORT_DIR, { recursive: true });
 
-  const all = await fetchAllWebsiteOrgs();
+  const allWebsiteOrgs = await fetchAllWebsiteOrgs();
+  const all = options.gap
+    ? allWebsiteOrgs.filter(
+        (row) =>
+          row.languages_confirmed === true &&
+          parseLanguageEvidence(row.languages_evidence).length === 0,
+      )
+    : allWebsiteOrgs;
   const written = all.filter(
     (row): row is OrgRow & { website_url: string; website_scope: "local" | "parent" } =>
       Boolean(row.website_url) &&
@@ -399,9 +417,13 @@ async function main() {
   const local = written.filter((row) => row.website_scope === "local");
   const parent = written.filter((row) => row.website_scope === "parent");
   const predating = all.filter((row) => row.website_url && !row.website_scope);
+  const checkpointPath = options.gap ? GAP_CHECKPOINT_PATH : CHECKPOINT_PATH;
+  const langReportPath = options.gap ? GAP_LANG_REPORT_PATH : LANG_REPORT_PATH;
+  const summaryPath = options.gap ? GAP_SUMMARY_PATH : SUMMARY_PATH;
 
   console.log(
-    `Loaded ${all.length} organizations with website_url` +
+    `${options.gap ? "GAP SCAN (confirmed languages, no evidence trail)\n" : ""}` +
+      `Loaded ${all.length} organizations with website_url` +
       `\n  written local=${local.length} parent=${parent.length} (expected 711 + 115)` +
       `\n  predating/unclassified=${predating.length}` +
       `\n  language scan universe=${all.length}`,
@@ -410,7 +432,7 @@ async function main() {
   let work = all;
   if (options.limit) work = all.slice(0, options.limit);
 
-  const checkpoint = loadCheckpoint(options.resume);
+  const checkpoint = loadCheckpoint(options.resume, checkpointPath);
   const done = new Set(checkpoint.completedIds);
   const pending = work.filter((row) => !done.has(row.id));
   console.log(
@@ -542,7 +564,7 @@ async function main() {
     finished += 1;
 
     if (finished % 10 === 0 || finished === pending.length) {
-      saveCheckpoint(checkpoint);
+      saveCheckpoint(checkpoint, checkpointPath);
       const elapsed = (Date.now() - started) / 1000;
       const rate = finished / Math.max(elapsed, 1);
       const remaining = (pending.length - finished) / Math.max(rate, 0.01);
@@ -553,7 +575,7 @@ async function main() {
     }
   });
 
-  saveCheckpoint(checkpoint);
+  saveCheckpoint(checkpoint, checkpointPath);
 
   const urlRows = Object.values(checkpoint.urlRows);
   const langRows = Object.values(checkpoint.langRows);
@@ -659,9 +681,11 @@ async function main() {
     uiSamples,
   };
 
-  writeFileSync(URL_REPORT_PATH, JSON.stringify(urlReport, null, 2));
-  writeFileSync(LANG_REPORT_PATH, JSON.stringify(langReport, null, 2));
-  writeFileSync(SUMMARY_PATH, JSON.stringify(summary, null, 2));
+  if (!options.gap) {
+    writeFileSync(URL_REPORT_PATH, JSON.stringify(urlReport, null, 2));
+  }
+  writeFileSync(langReportPath, JSON.stringify(langReport, null, 2));
+  writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
 
   console.log("\nAUDIT COMPLETE (report only — no database writes)");
   console.log(
@@ -674,8 +698,10 @@ async function main() {
     `Language: scanned=${langReport.scanned}  ≥1 confirmed=${langHits.length}  unchanged assumed English=${langReport.unchangedAssumedEnglish}`,
   );
   console.log("  language counts", langByLanguage);
-  console.log(`URL report: ${URL_REPORT_PATH}`);
-  console.log(`Language report: ${LANG_REPORT_PATH}`);
+  if (!options.gap) {
+    console.log(`URL report: ${URL_REPORT_PATH}`);
+  }
+  console.log(`Language report: ${langReportPath}`);
 }
 
 main().catch((error) => {

@@ -30,7 +30,22 @@ Maps.
   Census `Public_AR_Current` pin → `37.77605655167, -122.223928315919`.
   Name, description, pricing, intake, verified left as-is. EOIR key later
   absorbed as `doj-ra-centro-legal-de-la-raza-oakland-94601-f1f5557b`.
-- **Do not revert to:** 3400 International Blvd.
+- **Website / languages (2026-09-21):** `website_url` was already
+  `https://www.centrolegal.org` from this correction, but `website_scope`
+  stayed null because the URL predates the discovery pass. That host is
+  this office’s own site (Oakland address on every page), not CLINIC’s
+  `cliniclegal.org` network domain → `website_scope = local`. Languages
+  were curated as English / Arabic / Spanish with `languages_confirmed`
+  true and no `languages_evidence`. Spanish is on their volunteer page
+  (`offering-phrase`: “Spanish interpreters are in primary demand…” at
+  `https://centrolegal.org/get-involved/volunteers/`). Arabic is not
+  named as a service language on the current site (a GTranslate widget
+  can machine-translate the UI into Arabic; that is not the same bar as
+  the 371 website-confirmed writes). Arabic stays in `languages[]` and
+  will display as assumed once the Spanish trail exists. English is
+  never stored in evidence.
+- **Do not revert to:** 3400 International Blvd. Do not clear
+  `website_scope` or the Spanish evidence row.
 
 ## HIAS New York Legal Services
 
